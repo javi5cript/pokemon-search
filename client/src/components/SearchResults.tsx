@@ -1,0 +1,311 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+
+interface SearchResultsProps {
+  searchId: string;
+}
+
+interface Listing {
+  id: string;
+  ebayItemId: string;
+  url: string;
+  title: string;
+  price: number;
+  shippingCost: number;
+  currency: string;
+  seller: {
+    username: string;
+    feedbackScore: number;
+    feedbackPercent: number;
+  };
+  condition: string;
+  endTime: string;
+  images: string[];
+  evaluation: {
+    cardName: string | null;
+    cardSet: string | null;
+    cardNumber: string | null;
+    predictedGradeMin: number | null;
+    predictedGradeMax: number | null;
+    gradeConfidence: number;
+    expectedValue: number;
+    dealMargin: number;
+    dealScore: number;
+    isQualified: boolean;
+    qualificationFlags: string[];
+  } | null;
+}
+
+interface SearchData {
+  searchId: string;
+  status: string;
+  progress: {
+    total: number;
+    processed: number;
+    qualified: number;
+  };
+  listings: Listing[];
+}
+
+export default function SearchResults({ searchId }: SearchResultsProps) {
+  const [searchData, setSearchData] = useState<SearchData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchResults = async () => {
+      try {
+        const response = await fetch(`http://localhost:3001/api/search/${searchId}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch search results');
+        }
+        const data = await response.json();
+        setSearchData(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'An error occurred');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchResults();
+    
+    // Poll for updates if search is still processing
+    const interval = setInterval(() => {
+      if (searchData?.status === 'PROCESSING' || searchData?.status === 'PENDING') {
+        fetchResults();
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [searchId, searchData?.status]);
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-2xl shadow-xl p-12 text-center">
+        <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-indigo-600 mx-auto mb-4"></div>
+        <p className="text-gray-600 text-lg">Loading search results...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-2xl p-8">
+        <h3 className="text-red-800 font-bold text-xl mb-2">Error</h3>
+        <p className="text-red-600">{error}</p>
+      </div>
+    );
+  }
+
+  if (!searchData) {
+    return null;
+  }
+
+  const getGradeColor = (grade: number | null) => {
+    if (!grade) return 'text-gray-500';
+    if (grade >= 9) return 'text-green-600';
+    if (grade >= 8) return 'text-blue-600';
+    if (grade >= 7) return 'text-yellow-600';
+    return 'text-orange-600';
+  };
+
+  const getGradeBadge = (min: number | null, max: number | null) => {
+    if (!min || !max) return 'Unknown';
+    if (min === max) return `PSA ${min}`;
+    return `PSA ${min}-${max}`;
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Status Card */}
+      <div className="bg-white rounded-2xl shadow-xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-bold text-gray-800">
+            Search Results
+          </h2>
+          <span className={`px-4 py-2 rounded-full text-sm font-semibold ${
+            searchData.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+            searchData.status === 'PROCESSING' ? 'bg-blue-100 text-blue-800' :
+            searchData.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
+            'bg-red-100 text-red-800'
+          }`}>
+            {searchData.status}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-3 gap-4">
+          <div className="bg-gray-50 rounded-lg p-4">
+            <p className="text-sm text-gray-600">Total Listings</p>
+            <p className="text-3xl font-bold text-gray-900">{searchData.progress.total}</p>
+          </div>
+          <div className="bg-blue-50 rounded-lg p-4">
+            <p className="text-sm text-blue-600">Processed</p>
+            <p className="text-3xl font-bold text-blue-900">{searchData.progress.processed}</p>
+          </div>
+          <div className="bg-green-50 rounded-lg p-4">
+            <p className="text-sm text-green-600">Qualified Deals</p>
+            <p className="text-3xl font-bold text-green-900">{searchData.progress.qualified}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Listings */}
+      {searchData.listings.length === 0 ? (
+        <div className="bg-white rounded-2xl shadow-xl p-12 text-center">
+          <p className="text-gray-500 text-lg">No listings found yet. Search is {searchData.status.toLowerCase()}...</p>
+          <p className="text-gray-400 mt-2">Add eBay API keys to fetch live listings</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {searchData.listings.map((listing) => (
+            <div
+              key={listing.id}
+              className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-shadow overflow-hidden"
+            >
+              <div className="flex">
+                {/* Image */}
+                <div className="w-48 h-48 bg-gray-200 flex-shrink-0">
+                  {listing.images && listing.images.length > 0 ? (
+                    <img
+                      src={listing.images[0]}
+                      alt={listing.title}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-gray-400">
+                      No Image
+                    </div>
+                  )}
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 p-6">
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="flex-1 pr-4">
+                      <h3 className="text-lg font-bold text-gray-900 mb-2 hover:text-indigo-600">
+                        <a href={listing.url} target="_blank" rel="noopener noreferrer">
+                          {listing.title}
+                        </a>
+                      </h3>
+                      <p className="text-sm text-gray-600">
+                        Condition: <span className="font-medium">{listing.condition}</span>
+                      </p>
+                    </div>
+
+                    <div className="text-right">
+                      <p className="text-3xl font-bold text-indigo-600">
+                        ${listing.price.toFixed(2)}
+                      </p>
+                      {listing.shippingCost > 0 && (
+                        <p className="text-sm text-gray-500">
+                          +${listing.shippingCost.toFixed(2)} shipping
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Pre-Grading Information */}
+                  {listing.evaluation ? (
+                    <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg p-4 mt-4">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div>
+                          <p className="text-xs text-gray-600 mb-1">Predicted Grade</p>
+                          <p className={`text-lg font-bold ${getGradeColor(listing.evaluation.predictedGradeMin)}`}>
+                            {getGradeBadge(listing.evaluation.predictedGradeMin, listing.evaluation.predictedGradeMax)}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {(listing.evaluation.gradeConfidence * 100).toFixed(0)}% confidence
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-xs text-gray-600 mb-1">Expected Value</p>
+                          <p className="text-lg font-bold text-green-600">
+                            ${listing.evaluation.expectedValue.toFixed(2)}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-xs text-gray-600 mb-1">Deal Margin</p>
+                          <p className={`text-lg font-bold ${
+                            listing.evaluation.dealMargin > 50 ? 'text-green-600' :
+                            listing.evaluation.dealMargin > 0 ? 'text-blue-600' :
+                            'text-red-600'
+                          }`}>
+                            ${listing.evaluation.dealMargin.toFixed(2)}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-xs text-gray-600 mb-1">Deal Score</p>
+                          <div className="flex items-center">
+                            <p className="text-lg font-bold text-indigo-600 mr-2">
+                              {listing.evaluation.dealScore.toFixed(1)}
+                            </p>
+                            {listing.evaluation.isQualified && (
+                              <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full font-semibold">
+                                ✓ Qualified
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {listing.evaluation.cardName && (
+                        <div className="mt-3 pt-3 border-t border-indigo-200">
+                          <p className="text-sm text-gray-700">
+                            <span className="font-medium">Identified as:</span>{' '}
+                            {listing.evaluation.cardName}
+                            {listing.evaluation.cardSet && ` • ${listing.evaluation.cardSet}`}
+                            {listing.evaluation.cardNumber && ` #${listing.evaluation.cardNumber}`}
+                          </p>
+                        </div>
+                      )}
+
+                      {listing.evaluation.qualificationFlags.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {listing.evaluation.qualificationFlags.map((flag, idx) => (
+                            <span key={idx} className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
+                              ⚠️ {flag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="bg-gray-50 rounded-lg p-4 mt-4 text-center">
+                      <p className="text-sm text-gray-500">
+                        ⏳ Evaluation pending... Add OpenAI API key to enable AI grading
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Seller Info */}
+                  <div className="mt-4 flex items-center justify-between text-sm">
+                    <div>
+                      <span className="text-gray-600">Seller:</span>{' '}
+                      <span className="font-medium text-gray-900">{listing.seller.username}</span>
+                      <span className="text-gray-500 ml-2">
+                        ({listing.seller.feedbackScore} • {listing.seller.feedbackPercent.toFixed(1)}%)
+                      </span>
+                    </div>
+                    <a
+                      href={listing.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+                    >
+                      View on eBay →
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

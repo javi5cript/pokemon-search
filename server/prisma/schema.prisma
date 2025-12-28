@@ -1,0 +1,235 @@
+// Prisma Schema for Pokémon Card Finder
+// Database: SQLite (Standalone Local Application)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// Search records
+model Search {
+  id        String   @id @default(uuid())
+  userId    String?  @map("user_id")
+  
+  // Search criteria (stored as JSON string)
+  criteria  String
+  
+  // Status tracking (using String instead of enum for SQLite)
+  status    String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  
+  // Progress metrics
+  totalListings      Int      @default(0) @map("total_listings")
+  processedListings  Int      @default(0) @map("processed_listings")
+  qualifiedListings  Int      @default(0) @map("qualified_listings")
+  
+  // Timestamps
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  completedAt DateTime? @map("completed_at")
+  
+  // Error tracking
+  error       String?
+  
+  // Relations
+  listings    Listing[]
+  
+  @@index([userId, createdAt])
+  @@map("searches")
+}
+
+// Normalized eBay listing data
+model Listing {
+  id           String   @id @default(uuid())
+  searchId     String   @map("search_id")
+  ebayItemId   String   @unique @map("ebay_item_id")
+  
+  // Basic listing info (using Float for prices instead of Decimal)
+  url          String
+  title        String
+  price        Float
+  currency     String   @default("USD")
+  shippingCost Float    @default(0) @map("shipping_cost")
+  
+  // Seller information
+  sellerUsername       String  @map("seller_username")
+  sellerFeedbackScore  Int     @map("seller_feedback_score")
+  sellerFeedbackPercent Float  @map("seller_feedback_percent")
+  
+  // Listing details
+  location     String
+  condition    String
+  endTime      DateTime @map("end_time")
+  listingType  String   @default("FIXED_PRICE") @map("listing_type") // AUCTION, FIXED_PRICE
+  
+  // Images and specifics (stored as JSON strings)
+  images       String   // JSON array of image URLs
+  itemSpecifics String? @map("item_specifics") // JSON object
+  
+  // Raw data
+  description  String?
+  rawPayload   String   @map("raw_payload") // JSON string
+  
+  // Timestamps
+  createdAt    DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  search       Search      @relation(fields: [searchId], references: [id], onDelete: Cascade)
+  evaluation   Evaluation?
+  
+  @@index([searchId])
+  @@index([ebayItemId])
+  @@map("listings")
+}
+
+// Card evaluation results
+model Evaluation {
+  id         String   @id @default(uuid())
+  listingId  String   @unique @map("listing_id")
+  
+  // ===== PARSED FIELDS =====
+  cardName         String?  @map("card_name")
+  cardSet          String?  @map("card_set")
+  cardNumber       String?  @map("card_number")
+  year             Int?
+  language         String?
+  isHolo           Int?     @map("is_holo") // 0 or 1 (SQLite boolean)
+  isFirstEdition   Int?     @map("is_first_edition") // 0 or 1
+  isShadowless     Int?     @map("is_shadowless") // 0 or 1
+  rarity           String?
+  parseConfidence  Float    @default(0) @map("parse_confidence")
+  parseMetadata    String?  @map("parse_metadata") // JSON string
+  
+  // ===== GRADING =====
+  predictedGradeMin Float?  @map("predicted_grade_min")
+  predictedGradeMax Float?  @map("predicted_grade_max")
+  gradeConfidence   Float   @default(0) @map("grade_confidence")
+  defectFlags       String  @default("[]") @map("defect_flags") // JSON array
+  gradeReasoning    String? @map("grade_reasoning")
+  gradingDetails    String? @map("grading_details") // JSON string
+  
+  // ===== PRICING =====
+  marketPriceUngraded Float? @map("market_price_ungraded")
+  marketPricePsa7     Float? @map("market_price_psa7")
+  marketPricePsa8     Float? @map("market_price_psa8")
+  marketPricePsa9     Float? @map("market_price_psa9")
+  marketPricePsa10    Float? @map("market_price_psa10")
+  pricingConfidence   Float  @default(0) @map("pricing_confidence")
+  pricingSource       String? @map("pricing_source")
+  
+  // ===== SCORING =====
+  expectedValue      Float   @default(0) @map("expected_value")
+  dealMargin         Float   @default(0) @map("deal_margin")
+  dealScore          Float   @default(0) @map("deal_score")
+  qualificationFlags String  @default("[]") @map("qualification_flags") // JSON array
+  isQualified        Int     @default(0) @map("is_qualified") // 0 or 1
+  softScores         String? @map("soft_scores") // JSON string
+  
+  // Timestamps
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  
+  // Relations
+  listing    Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  
+  @@index([listingId])
+  @@index([isQualified, dealScore])
+  @@map("evaluations")
+}
+
+// Pricing cache for faster lookups
+model PricingCache {
+  id                String   @id @default(uuid())
+  canonicalCardId   String   @unique @map("canonical_card_id")
+  
+  // Card identification
+  cardName          String   @map("card_name")
+  cardSet           String   @map("card_set")
+  cardNumber        String   @map("card_number")
+  variant           String?
+  
+  // Pricing data (JSON string with all grades)
+  priceData         String   @map("price_data")
+  source            String
+  
+  // Cache metadata
+  cachedAt          DateTime @default(now()) @map("cached_at")
+  expiresAt         DateTime @map("expires_at")
+  hitCount          Int      @default(0) @map("hit_count")
+  
+  @@index([canonicalCardId])
+  @@index([expiresAt])
+  @@map("pricing_cache")
+}
+
+// Job queue metadata
+model JobHistory {
+  id           String      @id @default(uuid())
+  jobId        String      @unique @map("job_id")
+  jobType      String      @map("job_type") // EBAY_FETCH, CARD_PARSE, IMAGE_GRADE, etc.
+  
+  // Job data (JSON string)
+  payload      String
+  status       String      @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED, CANCELLED
+  
+  // Execution tracking
+  attempts     Int         @default(0)
+  maxAttempts  Int         @default(3) @map("max_attempts")
+  
+  // Timing
+  createdAt    DateTime    @default(now()) @map("created_at")
+  startedAt    DateTime?   @map("started_at")
+  completedAt  DateTime?   @map("completed_at")
+  failedAt     DateTime?   @map("failed_at")
+  
+  // Error tracking
+  error        String?
+  
+  @@index([jobType, status])
+  @@index([createdAt])
+  @@map("job_history")
+}
+
+// API usage tracking for rate limiting and analytics
+model ApiUsage {
+  id           String   @id @default(uuid())
+  service      String   // "ebay", "pricecharting", "openai"
+  endpoint     String?
+  
+  // Request tracking
+  requestCount Int      @default(1) @map("request_count")
+  successCount Int      @default(0) @map("success_count")
+  errorCount   Int      @default(0) @map("error_count")
+  
+  // Cost tracking
+  tokensUsed   Int?     @map("tokens_used")
+  creditsUsed  Int?     @map("credits_used")
+  
+  // Time window
+  windowStart  DateTime @map("window_start")
+  windowEnd    DateTime @map("window_end")
+  
+  createdAt    DateTime @default(now()) @map("created_at")
+  
+  @@index([service, windowStart])
+  @@map("api_usage")
+}
+
+// System configuration
+model Config {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String   // JSON string
+  
+  // Metadata
+  category  String   @default("general")
+  description String?
+  
+  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedBy String?  @map("updated_by")
+  
+  @@map("config")
+}
