@@ -13,7 +13,7 @@ import { config } from '../config';
 import logger from '../lib/logger';
 
 export interface EbaySearchCriteria {
-  keywords: string;
+  keywords: string | string[];
   category?: string;
   condition?: string[];
   priceMin?: number;
@@ -130,7 +130,10 @@ export class EbayService {
     const filters: string[] = [];
 
     // Keywords
-    filters.push(criteria.keywords);
+    const keywordsStr = Array.isArray(criteria.keywords) 
+      ? criteria.keywords.join(' ') 
+      : criteria.keywords;
+    filters.push(keywordsStr);
 
     // Category ID (20081 = Pokémon cards)
     if (criteria.category) {

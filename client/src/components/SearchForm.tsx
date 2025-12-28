@@ -50,7 +50,7 @@ export default function SearchForm({ onSearchCreated }: SearchFormProps) {
 
     try {
       const searchPayload = {
-        keywords: formData.keywords,
+        keywords: formData.keywords.split(',').map(k => k.trim()).filter(k => k.length > 0),
         listingType: formData.listingType,
         ...(formData.minPrice && { minPrice: parseFloat(formData.minPrice) }),
         ...(formData.maxPrice && { maxPrice: parseFloat(formData.maxPrice) }),
@@ -128,7 +128,7 @@ export default function SearchForm({ onSearchCreated }: SearchFormProps) {
           <p className="mt-1 text-sm text-red-600">{validationErrors.keywords}</p>
         )}
         <p className="mt-1 text-sm text-gray-500">
-          Enter card name, set, or specific details
+          Enter card name, set, or specific details (separate multiple terms with commas)
         </p>
       </div>
 

@@ -17,6 +17,14 @@ import { priceChartingService } from './services/pricecharting';
 import { ListingScorer, FilterCriteria, DEFAULT_WEIGHTS } from './services/scorer';
 import type { EbaySearchCriteria } from './services/ebay';
 import { searchQueue, ebayFetchQueue, parseQueue, gradeQueue, priceQueue, scoreQueue } from './queues';
+import { Worker, Job } from 'bullmq';
+import redis from './lib/redis';
+
+// Redis connection options for BullMQ workers
+const redisConnection = {
+  host: process.env.REDIS_HOST || 'localhost',
+  port: parseInt(process.env.REDIS_PORT || '6379'),
+};
 
 // ============================================================================
 // Job Data Interfaces
@@ -41,16 +49,19 @@ interface PriceJobData {
 
 interface ScoreJobData {
   listingId: string;
+  searchId: string;
 }
 
 // ============================================================================
 // Worker: eBay Fetch
 // ============================================================================
 
-searchQueue.process('ebay-search', async (job) => {
-  const { searchId, criteria } = job.data as EbayFetchJobData;
+const ebayFetchWorker = new Worker(
+  'search',
+  async (job: Job<EbayFetchJobData>) => {
+    const { searchId, criteria } = job.data;
   
-  logger.info({ searchId }, 'Starting eBay fetch job');
+    logger.info({ searchId }, 'Starting eBay fetch job');
     
     try {
       // Update search status
@@ -113,29 +124,38 @@ searchQueue.process('ebay-search', async (job) => {
         },
       });
 
-      logger.info({ searchId }, 'eBay fetch job complete');
-
-    } catch (error: any) {
-      logger.error({ error, searchId }, 'eBay fetch job failed');
-      
-      await prisma.search.update({
-        where: { id: searchId },
-        data: {
-          status: 'FAILED',
-          error: error.message,
-        },
-      });
-
-      throw error;
+        logger.info({ searchId }, 'eBay fetch job complete');
+  
+        return { success: true };
+  
+      } catch (error: any) {
+        logger.error({ error, searchId }, 'eBay fetch job failed');
+        
+        await prisma.search.update({
+          where: { id: searchId },
+          data: {
+            status: 'FAILED',
+            error: error.message,
+          },
+        });
+  
+        throw error;
+      }
+    },
+    {
+      connection: redisConnection,
+      concurrency: 5,
     }
-  });
+  );
 
 // ============================================================================
 // Worker: Card Parser
 // ============================================================================
 
-parseQueue.process('parse-card', async (job) => {
-  const { listingId } = job.data as ParseJobData;
+const parseWorker = new Worker(
+  'parse',
+  async (job: Job<ParseJobData>) => {
+    const { listingId } = job.data;
     
     logger.info({ listingId }, 'Starting parse job');
 
@@ -201,19 +221,13 @@ parseQueue.process('parse-card', async (job) => {
 
       // Queue grading and pricing jobs
       await Promise.all([
-        gradeQueue.add('grade-card', { listingId }, {
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 2000 },
-        }),
-        priceQueue.add('lookup-price', { listingId }, {
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 2000 },
-        }),
+        gradeQueue.add('grade-card', { listingId }),
+        priceQueue.add('lookup-price', { listingId }),
       ]);
 
       logger.info({ listingId, confidence: parseResult.confidence }, 'Parse job complete');
 
-      return { success: true, evaluationId: evaluation.id };
+      return { success: true };
 
     } catch (error: any) {
       logger.error({ error, listingId }, 'Parse job failed');
@@ -221,8 +235,8 @@ parseQueue.process('parse-card', async (job) => {
     }
   },
   {
-    connection: redis,
-    concurrency: 10, // Process 10 parsings concurrently
+    connection: redisConnection,
+    concurrency: 10,
   }
 );
 
@@ -324,7 +338,7 @@ const gradeWorker = new Worker(
     }
   },
   {
-    connection: redis,
+    connection: redisConnection,
     concurrency: 5, // Vision API calls are more expensive
   }
 );
@@ -390,7 +404,7 @@ const priceWorker = new Worker(
     }
   },
   {
-    connection: redis,
+    connection: redisConnection,
     concurrency: 10,
   }
 );
@@ -504,7 +518,7 @@ const scoreWorker = new Worker(
     }
   },
   {
-    connection: redis,
+    connection: redisConnection,
     concurrency: 3,
   }
 );
@@ -549,10 +563,7 @@ async function checkAndQueueScoring(listingId: string, searchId: string): Promis
 
     if (search && search.processedListings >= search.totalListings) {
       // Queue final scoring job
-      await scoreQueue.add('score-search', { searchId }, {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 2000 },
-      });
+      await scoreQueue.add('score-search', { searchId });
     }
   }
 }
@@ -605,11 +616,11 @@ workers.forEach(worker => {
     logger.info({ jobId: job.id, queue: worker.name }, 'Job completed');
   });
 
-  worker.on('failed', (job, error) => {
+  worker.on('failed', (job: Job | undefined, error) => {
     logger.error({ jobId: job?.id, queue: worker.name, error }, 'Job failed');
   });
 
-  worker.on('error', (error) => {
+  worker.on('error', (error: Error) => {
     logger.error({ queue: worker.name, error }, 'Worker error');
   });
 });
