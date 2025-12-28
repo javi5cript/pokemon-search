@@ -56,12 +56,10 @@ interface ScoreJobData {
 // Worker: eBay Fetch
 // ============================================================================
 
-const ebayFetchWorker = new Worker(
-  'search',
-  async (job: Job<EbayFetchJobData>) => {
-    const { searchId, criteria } = job.data;
+searchQueue.process('ebay-search', async (job) => {
+  const { searchId, criteria } = job.data as EbayFetchJobData;
   
-    logger.info({ searchId }, 'Starting eBay fetch job');
+  logger.info({ searchId }, 'Starting eBay fetch job');
     
     try {
       // Update search status
@@ -124,38 +122,29 @@ const ebayFetchWorker = new Worker(
         },
       });
 
-        logger.info({ searchId }, 'eBay fetch job complete');
-  
-        return { success: true };
-  
-      } catch (error: any) {
-        logger.error({ error, searchId }, 'eBay fetch job failed');
-        
-        await prisma.search.update({
-          where: { id: searchId },
-          data: {
-            status: 'FAILED',
-            error: error.message,
-          },
-        });
-  
-        throw error;
-      }
-    },
-    {
-      connection: redisConnection,
-      concurrency: 5,
+      logger.info({ searchId }, 'eBay fetch job complete');
+
+    } catch (error: any) {
+      logger.error({ error, searchId }, 'eBay fetch job failed');
+      
+      await prisma.search.update({
+        where: { id: searchId },
+        data: {
+          status: 'FAILED',
+          error: error.message,
+        },
+      });
+
+      throw error;
     }
-  );
+  });
 
 // ============================================================================
 // Worker: Card Parser
 // ============================================================================
 
-const parseWorker = new Worker(
-  'parse',
-  async (job: Job<ParseJobData>) => {
-    const { listingId } = job.data;
+parseQueue.process('parse-card', async (job) => {
+  const { listingId } = job.data as ParseJobData;
     
     logger.info({ listingId }, 'Starting parse job');
 
@@ -195,11 +184,7 @@ const parseWorker = new Worker(
           isFirstEdition: parseResult.isFirstEdition === 'unknown' ? null : (parseResult.isFirstEdition ? 1 : 0),
           isShadowless: parseResult.isShadowless === 'unknown' ? null : (parseResult.isShadowless ? 1 : 0),
           rarity: parseResult.rarity,
-          variant: parseResult.variant,
           parseConfidence: parseResult.confidence,
-          parseReasoning: parseResult.reasoning,
-          parseKeywords: JSON.stringify(parseResult.extractedKeywords),
-          parseUncertainties: JSON.stringify(parseResult.uncertainties),
         },
         update: {
           cardName: parseResult.cardName,
@@ -211,11 +196,7 @@ const parseWorker = new Worker(
           isFirstEdition: parseResult.isFirstEdition === 'unknown' ? null : (parseResult.isFirstEdition ? 1 : 0),
           isShadowless: parseResult.isShadowless === 'unknown' ? null : (parseResult.isShadowless ? 1 : 0),
           rarity: parseResult.rarity,
-          variant: parseResult.variant,
           parseConfidence: parseResult.confidence,
-          parseReasoning: parseResult.reasoning,
-          parseKeywords: JSON.stringify(parseResult.extractedKeywords),
-          parseUncertainties: JSON.stringify(parseResult.uncertainties),
         },
       });
 
@@ -227,18 +208,11 @@ const parseWorker = new Worker(
 
       logger.info({ listingId, confidence: parseResult.confidence }, 'Parse job complete');
 
-      return { success: true };
-
-    } catch (error: any) {
-      logger.error({ error, listingId }, 'Parse job failed');
-      throw error;
-    }
-  },
-  {
-    connection: redisConnection,
-    concurrency: 10,
+  } catch (error: any) {
+    logger.error({ error, listingId }, 'Parse job failed');
+    throw error;
   }
-);
+});
 
 // ============================================================================
 // Worker: Image Grader
@@ -467,7 +441,6 @@ const scoreWorker = new Worker(
           where: { id: listing.evaluation.id },
           data: {
             isQualified: scoreResult.qualified ? 1 : 0,
-            qualifyFailures: JSON.stringify(scoreResult.hardFilterResult.failedFilters),
             dealScore: scoreResult.dealScore,
             scorePhotoQuality: scoreResult.scoringResult.componentScores.photoQuality,
             scoreSeller: scoreResult.scoringResult.componentScores.sellerReputation,

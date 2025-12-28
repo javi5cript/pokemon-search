@@ -228,21 +228,24 @@ export class SoftScorer {
     else if (images.length >= 2) score += 1;
 
     // Quality assessment from grading (0-4 points)
-    if (evaluation.imageAdequate) {
-      score += 2;
-    }
+    // Note: imageAdequate property removed or not yet in schema
+    // if (evaluation.imageAdequate) {
+    //   score += 2;
+    // }
 
-    const missingViews = this.parseJsonArray(evaluation.imageMissingViews);
-    if (missingViews.length === 0) {
-      score += 1;
-    }
+    // Note: imageMissingViews property not yet in schema
+    // const missingViews = this.parseJsonArray(evaluation.imageMissingViews);
+    // if (missingViews.length === 0) {
+    //   score += 1;
+    // }
 
-    const qualityIssues = this.parseJsonArray(evaluation.imageQualityIssues);
-    if (qualityIssues.length === 0) {
-      score += 1;
-    } else {
-      score -= qualityIssues.length * 0.5;
-    }
+    // Note: imageQualityIssues property not yet in schema
+    // const qualityIssues = this.parseJsonArray(evaluation.imageQualityIssues);
+    // if (qualityIssues.length === 0) {
+    //   score += 1;
+    // } else {
+    //   score -= qualityIssues.length * 0.5;
+    // }
 
     return Math.max(0, Math.min(10, score));
   }
