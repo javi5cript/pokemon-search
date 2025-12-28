@@ -19,11 +19,34 @@ export default function SearchForm({ onSearchCreated }: SearchFormProps) {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     setError(null);
+    setValidationErrors({});
+
+    // Client-side validation
+    const errors: Record<string, string> = {};
+    
+    if (!formData.keywords.trim()) {
+      errors.keywords = 'Search keywords are required';
+    }
+    
+    if (formData.minPrice && formData.maxPrice) {
+      const min = parseFloat(formData.minPrice);
+      const max = parseFloat(formData.maxPrice);
+      if (min > max) {
+        errors.priceRange = 'Minimum price cannot be greater than maximum price';
+      }
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
       const searchPayload = {
@@ -44,14 +67,27 @@ export default function SearchForm({ onSearchCreated }: SearchFormProps) {
         body: JSON.stringify(searchPayload),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        throw new Error('Failed to create search');
+        // Handle validation errors from server
+        if (data.details && Array.isArray(data.details)) {
+          const serverErrors: Record<string, string> = {};
+          data.details.forEach((detail: any) => {
+            const field = detail.path?.[0] || 'general';
+            serverErrors[field] = detail.message;
+          });
+          setValidationErrors(serverErrors);
+          setError('Please fix the validation errors below');
+        } else {
+          setError(data.error || 'Failed to create search');
+        }
+        return;
       }
 
-      const data = await response.json();
       onSearchCreated(data.searchId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(err instanceof Error ? err.message : 'Connection error. Make sure the server is running.');
     } finally {
       setIsSubmitting(false);
     }
@@ -79,8 +115,13 @@ export default function SearchForm({ onSearchCreated }: SearchFormProps) {
           value={formData.keywords}
           onChange={(e) => setFormData({ ...formData, keywords: e.target.value })}
           placeholder="e.g., Charizard Base Set, Pikachu 1st Edition"
-          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+          className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 ${
+            validationErrors.keywords ? 'border-red-500' : 'border-gray-300'
+          }`}
         />
+        {validationErrors.keywords && (
+          <p className="mt-1 text-sm text-red-600">{validationErrors.keywords}</p>
+        )}
         <p className="mt-1 text-sm text-gray-500">
           Enter card name, set, or specific details
         </p>
@@ -94,7 +135,7 @@ export default function SearchForm({ onSearchCreated }: SearchFormProps) {
         <select
           value={formData.listingType}
           onChange={(e) => setFormData({ ...formData, listingType: e.target.value })}
-          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900"
         >
           <option value="all">All Listings</option>
           <option value="buyItNow">Buy It Now Only</option>
@@ -115,7 +156,9 @@ export default function SearchForm({ onSearchCreated }: SearchFormProps) {
             value={formData.minPrice}
             onChange={(e) => setFormData({ ...formData, minPrice: e.target.value })}
             placeholder="10.00"
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 ${
+              validationErrors.priceRange ? 'border-red-500' : 'border-gray-300'
+            }`}
           />
         </div>
         <div>
@@ -129,10 +172,15 @@ export default function SearchForm({ onSearchCreated }: SearchFormProps) {
             value={formData.maxPrice}
             onChange={(e) => setFormData({ ...formData, maxPrice: e.target.value })}
             placeholder="500.00"
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 ${
+              validationErrors.priceRange ? 'border-red-500' : 'border-gray-300'
+            }`}
           />
         </div>
       </div>
+      {validationErrors.priceRange && (
+        <p className="mt-1 text-sm text-red-600">{validationErrors.priceRange}</p>
+      )}
 
       {/* Condition */}
       <div>
@@ -162,7 +210,7 @@ export default function SearchForm({ onSearchCreated }: SearchFormProps) {
         <select
           value={formData.language}
           onChange={(e) => setFormData({ ...formData, language: e.target.value })}
-          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900"
         >
           <option value="English">English</option>
           <option value="Japanese">Japanese</option>
@@ -185,7 +233,7 @@ export default function SearchForm({ onSearchCreated }: SearchFormProps) {
           min="0"
           value={formData.minSellerFeedback}
           onChange={(e) => setFormData({ ...formData, minSellerFeedback: e.target.value })}
-          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900"
         />
         <p className="mt-1 text-sm text-gray-500">
           Filter sellers by their feedback rating
@@ -195,7 +243,21 @@ export default function SearchForm({ onSearchCreated }: SearchFormProps) {
       {/* Error Message */}
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-          {error}
+          <div className="flex items-start">
+            <svg className="h-5 w-5 text-red-400 mr-2 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
+            <div>
+              <p className="font-medium">{error}</p>
+              {Object.keys(validationErrors).length > 0 && (
+                <ul className="mt-2 space-y-1 text-sm">
+                  {Object.entries(validationErrors).map(([field, message]) => (
+                    <li key={field}>• {message}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
