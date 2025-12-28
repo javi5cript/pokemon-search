@@ -80,14 +80,19 @@ export default function SearchForm({ onSearchCreated }: SearchFormProps) {
           setValidationErrors(serverErrors);
           setError('Please fix the validation errors below');
         } else {
-          setError(data.error || 'Failed to create search');
+          setError(data.message || data.error || 'Failed to create search. Check server logs for details.');
         }
         return;
       }
 
       onSearchCreated(data.searchId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Connection error. Make sure the server is running.');
+      console.error('Search error:', err);
+      setError(
+        err instanceof Error 
+          ? `${err.message}. Make sure the server is running on port 3001.` 
+          : 'Connection error. Make sure the server is running on port 3001.'
+      );
     } finally {
       setIsSubmitting(false);
     }

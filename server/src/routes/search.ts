@@ -8,7 +8,7 @@ export const searchRouter = Router();
 
 // Validation schema for search criteria
 const searchCriteriaSchema = z.object({
-  keywords: z.string().min(1),
+  keywords: z.array(z.string()).min(1, 'At least one keyword is required'),
   category: z.string().optional(),
   condition: z.array(z.string()).optional(),
   minPrice: z.number().optional(),
@@ -23,23 +23,38 @@ const searchCriteriaSchema = z.object({
 // POST /api/search - Create new search
 searchRouter.post('/', async (req, res) => {
   try {
+    logger.info({ body: req.body }, 'Received search request');
+    
     const criteria = searchCriteriaSchema.parse(req.body);
     
     // Create search record
     const search = await prisma.search.create({
       data: {
-        criteria: criteria as any,
+        criteria: JSON.stringify(criteria),
         status: 'PENDING',
       },
     });
     
-    // Queue the search job
-    await searchQueue.add('ebay-search', {
-      searchId: search.id,
-      criteria,
-    });
+    logger.info({ searchId: search.id, criteria }, 'Search record created');
     
-    logger.info({ searchId: search.id }, 'Search created and queued');
+    // Queue the search job
+    try {
+      await searchQueue.add('ebay-search', {
+        searchId: search.id,
+        criteria,
+      });
+      logger.info({ searchId: search.id }, 'Search job queued successfully');
+    } catch (queueError) {
+      logger.error({ error: queueError, searchId: search.id }, 'Failed to queue search job');
+      // Update search status to failed
+      await prisma.search.update({
+        where: { id: search.id },
+        data: { 
+          status: 'FAILED',
+          error: 'Failed to queue search job. Worker may not be running.'
+        },
+      });
+    }
     
     res.status(201).json({
       searchId: search.id,
@@ -48,6 +63,7 @@ searchRouter.post('/', async (req, res) => {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
+      logger.warn({ error: error.errors }, 'Validation error');
       res.status(400).json({
         error: 'Invalid search criteria',
         details: error.errors,
@@ -55,8 +71,11 @@ searchRouter.post('/', async (req, res) => {
       return;
     }
     
-    logger.error({ error }, 'Failed to create search');
-    res.status(500).json({ error: 'Failed to create search' });
+    logger.error({ error, stack: error instanceof Error ? error.stack : undefined }, 'Failed to create search');
+    res.status(500).json({ 
+      error: 'Failed to create search',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 });
 
