@@ -56,8 +56,10 @@ interface ScoreJobData {
 // Worker: eBay Fetch
 // ============================================================================
 
-searchQueue.process('ebay-search', async (job) => {
-  const { searchId, criteria } = job.data as EbayFetchJobData;
+const ebayFetchWorker = new Worker(
+  'search',
+  async (job: Job<EbayFetchJobData>) => {
+  const { searchId, criteria } = job.data;
   
   logger.info({ searchId }, 'Starting eBay fetch job');
     
@@ -135,16 +137,23 @@ searchQueue.process('ebay-search', async (job) => {
         },
       });
 
-      throw error;
+        throw error;
+      }
+    },
+    {
+      connection: redisConnection,
+      concurrency: 5,
     }
-  });
+  );
 
 // ============================================================================
 // Worker: Card Parser
 // ============================================================================
 
-parseQueue.process('parse-card', async (job) => {
-  const { listingId } = job.data as ParseJobData;
+const parseWorker = new Worker(
+  'parse',
+  async (job: Job<ParseJobData>) => {
+  const { listingId } = job.data;
     
     logger.info({ listingId }, 'Starting parse job');
 
@@ -212,7 +221,12 @@ parseQueue.process('parse-card', async (job) => {
     logger.error({ error, listingId }, 'Parse job failed');
     throw error;
   }
-});
+  },
+  {
+    connection: redisConnection,
+    concurrency: 10,
+  }
+);
 
 // ============================================================================
 // Worker: Image Grader
@@ -347,14 +361,13 @@ const priceWorker = new Worker(
         eval_.cardSet || 'unknown',
         eval_.cardNumber || 'unknown',
         eval_.language || 'English',
-        eval_.variant || undefined
+        undefined
       );
 
       // Update evaluation with pricing
       await prisma.evaluation.update({
         where: { id: eval_.id },
         data: {
-          priceFound: priceResult.found ? 1 : 0,
           priceConfidence: priceResult.confidence,
           priceReasoning: priceResult.reasoning,
           marketPriceUngraded: priceResult.priceData?.marketPrice,
@@ -411,7 +424,7 @@ const scoreWorker = new Worker(
         // Skip if evaluation is not complete
         if (
           listing.evaluation.gradeConfidence === null ||
-          listing.evaluation.priceFound === null
+          listing.evaluation.priceConfidence === null
         ) {
           continue;
         }
@@ -512,7 +525,7 @@ async function checkAndQueueScoring(listingId: string, searchId: string): Promis
 
   // Check if both grading and pricing are complete
   const hasGrading = evaluation.gradeConfidence !== null;
-  const hasPricing = evaluation.priceFound !== null;
+  const hasPricing = evaluation.priceConfidence !== null;
 
   if (hasGrading && hasPricing) {
     // Increment processed count
