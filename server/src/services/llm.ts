@@ -148,6 +148,7 @@ export class LLMService {
   constructor() {
     this.client = new OpenAI({
       apiKey: config.openai.apiKey,
+      baseURL: 'https://api.hicap.ai/v1',
     });
   }
 

@@ -61,8 +61,11 @@ export default function SearchResults({ searchId }: SearchResultsProps) {
           throw new Error('Failed to fetch search results');
         }
         const data = await response.json();
+        console.log('Search data received:', data);
+        console.log('Listings count:', data.listings?.length);
         setSearchData(data);
       } catch (err) {
+        console.error('Error fetching results:', err);
         setError(err instanceof Error ? err.message : 'An error occurred');
       } finally {
         setLoading(false);
@@ -73,7 +76,7 @@ export default function SearchResults({ searchId }: SearchResultsProps) {
     
     // Poll for updates if search is still processing
     const interval = setInterval(() => {
-      if (searchData?.status === 'PROCESSING' || searchData?.status === 'PENDING') {
+      if (searchData?.status === 'PROCESSING' || searchData?.status === 'PENDING' || searchData?.status === 'IN_PROGRESS') {
         fetchResults();
       }
     }, 3000);

@@ -8,6 +8,9 @@ import redis from './lib/redis';
 import { searchRouter } from './routes/search';
 import { healthRouter } from './routes/health';
 
+// Register job processors for in-memory queue
+import './processors';
+
 const app = express();
 
 // Middleware

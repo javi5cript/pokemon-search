@@ -134,7 +134,7 @@ searchRouter.get('/:searchId', async (req, res) => {
         },
         condition: listing.condition,
         endTime: listing.endTime,
-        images: listing.images,
+        images: typeof listing.images === 'string' ? JSON.parse(listing.images) : listing.images,
         evaluation: listing.evaluation ? {
           cardName: listing.evaluation.cardName,
           cardSet: listing.evaluation.cardSet,
@@ -146,7 +146,9 @@ searchRouter.get('/:searchId', async (req, res) => {
           dealMargin: listing.evaluation.dealMargin,
           dealScore: listing.evaluation.dealScore,
           isQualified: listing.evaluation.isQualified,
-          qualificationFlags: listing.evaluation.qualificationFlags,
+          qualificationFlags: typeof listing.evaluation.qualificationFlags === 'string' 
+            ? JSON.parse(listing.evaluation.qualificationFlags) 
+            : (listing.evaluation.qualificationFlags || []),
         } : null,
       })),
       createdAt: search.createdAt,
