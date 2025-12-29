@@ -57,7 +57,7 @@ interface ScoreJobData {
 // ============================================================================
 
 const ebayFetchWorker = new Worker(
-  'search',
+  'ebay-search',
   async (job: Job<EbayFetchJobData>) => {
   const { searchId, criteria } = job.data;
   

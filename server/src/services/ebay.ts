@@ -51,12 +51,29 @@ export class EbayService {
   private tokenExpiry: Date | null = null;
   private requestCount: number = 0;
   private rateLimitWindow: Date = new Date();
+  private readonly baseURL: string;
+  private readonly authURL: string;
 
   constructor() {
+    // Use different URLs for sandbox vs production
+    const isSandbox = config.ebay.environment === 'SANDBOX';
+    this.baseURL = isSandbox 
+      ? 'https://api.sandbox.ebay.com'
+      : 'https://api.ebay.com';
+    this.authURL = isSandbox
+      ? 'https://api.sandbox.ebay.com/identity/v1/oauth2/token'
+      : 'https://api.ebay.com/identity/v1/oauth2/token';
+    
     this.client = axios.create({
-      baseURL: 'https://api.ebay.com',
+      baseURL: this.baseURL,
       timeout: 30000,
     });
+    
+    logger.info({
+      environment: config.ebay.environment,
+      baseURL: this.baseURL,
+      authURL: this.authURL,
+    }, 'eBay Service initialized');
   }
 
   /**
@@ -68,7 +85,12 @@ export class EbayService {
       return this.accessToken;
     }
 
-    logger.info('Fetching new eBay OAuth token');
+    logger.info({
+      environment: config.ebay.environment,
+      authURL: this.authURL,
+      hasClientId: !!config.ebay.clientId,
+      hasClientSecret: !!config.ebay.clientSecret,
+    }, 'Fetching new eBay OAuth token');
 
     try {
       const credentials = Buffer.from(
@@ -76,7 +98,7 @@ export class EbayService {
       ).toString('base64');
 
       const response = await axios.post(
-        'https://api.ebay.com/identity/v1/oauth2/token',
+        this.authURL,
         'grant_type=client_credentials&scope=https://api.ebay.com/oauth/api_scope',
         {
           headers: {
@@ -92,8 +114,13 @@ export class EbayService {
 
       logger.info('Successfully obtained eBay OAuth token');
       return this.accessToken!;
-    } catch (error) {
-      logger.error({ error }, 'Failed to obtain eBay OAuth token');
+    } catch (error: any) {
+      logger.error({ 
+        error: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        authURL: this.authURL,
+      }, 'Failed to obtain eBay OAuth token');
       throw new Error('eBay authentication failed');
     }
   }
