@@ -4,7 +4,10 @@
  * Implements hard filters and soft scoring for listing evaluation
  */
 
-import type { Listing, Evaluation } from '@prisma/client';
+import type { Listing as PrismaListing, Evaluation as PrismaEvaluation } from '.prisma/client';
+
+type Listing = PrismaListing;
+type Evaluation = PrismaEvaluation;
 
 // ============================================================================
 // Hard Filters
@@ -405,6 +408,42 @@ export interface ListingScore {
 }
 
 export class ListingScorer {
+  /**
+   * Score a single listing with evaluation (simplified interface for processors)
+   */
+  scoreListing(
+    listing: any,
+    evaluation: any
+  ): {
+    expectedValue: number | null;
+    dealMargin: number | null;
+    dealScore: number;
+    isQualified: boolean;
+    qualificationFlags: string[];
+    softScores: Record<string, number>;
+  } {
+    const result = ListingScorer.score(listing, evaluation);
+    
+    // Calculate expected value and deal margin
+    let expectedValue: number | null = null;
+    let dealMargin: number | null = null;
+    
+    if (evaluation && evaluation.marketPricePsa9 && evaluation.predictedGradeMin >= 8) {
+      expectedValue = evaluation.marketPricePsa9;
+      const totalCost = listing.price + (listing.shippingCost || 0);
+      dealMargin = expectedValue - totalCost;
+    }
+
+    return {
+      expectedValue,
+      dealMargin,
+      dealScore: result.dealScore,
+      isQualified: result.qualified,
+      qualificationFlags: result.hardFilterResult.failedFilters,
+      softScores: result.scoringResult.componentScores,
+    };
+  }
+
   static score(
     listing: Listing,
     evaluation: Evaluation | null,

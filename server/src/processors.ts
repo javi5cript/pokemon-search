@@ -220,7 +220,13 @@ gradeQueue.process('grade-card', async (job) => {
       return;
     }
 
-    const gradeResult = await llmService.gradeCard(images);
+    // Pass card information to help with grading context
+    const gradeResult = await llmService.gradeCard(
+      images,
+      listing.evaluation.cardName || 'unknown',
+      listing.evaluation.cardSet || 'unknown',
+      listing.evaluation.year || 'unknown'
+    );
 
     await prisma.evaluation.update({
       where: { listingId },
@@ -237,28 +243,6 @@ gradeQueue.process('grade-card', async (job) => {
           surface: gradeResult.surface,
           imageQuality: gradeResult.imageQuality,
         }),
-        // Store individual grading components
-        centeringFrontH: parseFloat(gradeResult.centering.frontHorizontal) || null,
-        centeringFrontV: parseFloat(gradeResult.centering.frontVertical) || null,
-        centeringBackH: gradeResult.centering.backHorizontal !== 'unknown' 
-          ? parseFloat(gradeResult.centering.backHorizontal) 
-          : null,
-        centeringBackV: gradeResult.centering.backVertical !== 'unknown' 
-          ? parseFloat(gradeResult.centering.backVertical) 
-          : null,
-        cornerTL: gradeResult.corners.topLeft,
-        cornerTR: gradeResult.corners.topRight,
-        cornerBL: gradeResult.corners.bottomLeft,
-        cornerBR: gradeResult.corners.bottomRight,
-        edgeTop: gradeResult.edges.top,
-        edgeRight: gradeResult.edges.right,
-        edgeBottom: gradeResult.edges.bottom,
-        edgeLeft: gradeResult.edges.left,
-        surfaceFront: gradeResult.surface.frontCondition,
-        surfaceBack: gradeResult.surface.backCondition !== 'unknown' 
-          ? gradeResult.surface.backCondition 
-          : null,
-        imageAdequate: gradeResult.imageQuality.adequateForGrading ? 1 : 0,
       },
     });
 
@@ -344,12 +328,12 @@ scoreQueue.process('score-deal', async (job) => {
     await prisma.evaluation.update({
       where: { listingId },
       data: {
-        expectedValue: scoreResult.expectedValue,
-        dealMargin: scoreResult.dealMargin,
-        dealScore: scoreResult.dealScore,
+        expectedValue: scoreResult.expectedValue || 0,
+        dealMargin: scoreResult.dealMargin || 0,
+        dealScore: scoreResult.dealScore || 0,
         isQualified: scoreResult.isQualified ? 1 : 0,
-        qualificationFlags: JSON.stringify(scoreResult.qualificationFlags),
-        softScores: JSON.stringify(scoreResult.softScores),
+        qualificationFlags: JSON.stringify(scoreResult.qualificationFlags || []),
+        softScores: JSON.stringify(scoreResult.softScores || {}),
       },
     });
 

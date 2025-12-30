@@ -70,6 +70,43 @@ export class PriceChartingService {
   }
 
   /**
+   * Get card prices (simplified interface for processors)
+   */
+  async getCardPrices(
+    cardName: string | null,
+    set: string | null,
+    cardNumber: string | null
+  ): Promise<{
+    ungraded: number | null;
+    psa7: number | null;
+    psa8: number | null;
+    psa9: number | null;
+    psa10: number | null;
+    confidence: number;
+    source: string;
+  } | null> {
+    if (!cardName || !set) {
+      return null;
+    }
+
+    const result = await this.lookupPrice(cardName, set, cardNumber || '', 'English');
+    
+    if (!result.found || !result.priceData) {
+      return null;
+    }
+
+    return {
+      ungraded: result.priceData.loosePrice,
+      psa7: result.priceData.gradedPrices.psa7 || null,
+      psa8: result.priceData.gradedPrices.psa8 || null,
+      psa9: result.priceData.gradedPrices.psa9 || null,
+      psa10: result.priceData.gradedPrices.psa10 || null,
+      confidence: result.confidence,
+      source: 'pricecharting',
+    };
+  }
+
+  /**
    * Look up pricing for a card
    */
   async lookupPrice(

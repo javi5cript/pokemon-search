@@ -242,19 +242,13 @@ export class LLMService {
       const completion = await this.client.chat.completions.create({
         model: config.openai.visionModel,
         messages,
-        max_tokens: 2000,
+        max_tokens: 3000,
         temperature: 0.1,
+        response_format: { type: 'json_object' },
       });
 
       const responseText = completion.choices[0].message.content || '{}';
-      
-      // Extract JSON from response
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('No JSON found in response');
-      }
-
-      const parsed = JSON.parse(jsonMatch[0]);
+      const parsed = JSON.parse(responseText);
 
       logger.info(
         {
@@ -267,7 +261,14 @@ export class LLMService {
       return this.validateGradingResult(parsed);
 
     } catch (error: any) {
-      logger.error({ error }, 'Card grading failed');
+      logger.error({ 
+        error: error.message,
+        stack: error.stack,
+        response: error.response?.data,
+        status: error.response?.status,
+        cardName,
+        imageCount: images.length
+      }, 'Card grading failed');
 
       // Return low-confidence result on error
       return {
@@ -363,18 +364,110 @@ Return a JSON object with these exact fields:
     set: string,
     year: number | string
   ): string {
-    return `Analyze these Pokémon card images and estimate the PSA grade range.
+    return `You are analyzing ${imageCount} image(s) of a Pokémon trading card for PSA-style grading.
 
-CARD INFORMATION:
+CARD DETAILS:
 - Name: ${cardName}
 - Set: ${set}
 - Year: ${year}
 
-NUMBER OF IMAGES: ${imageCount}
+GRADING INSTRUCTIONS:
+Examine each image carefully and assess the following in order of importance:
 
-Evaluate the card carefully and return a JSON object with all required fields as specified in the system prompt.
+1. CENTERING (Most Critical)
+   - Measure front horizontal centering (left border vs right border)
+   - Measure front vertical centering (top border vs bottom border)
+   - If back is visible, measure back centering as well
+   - Express as ratios (e.g., "55/45", "60/40", "70/30")
+   - Perfect is 50/50, PSA 10 allows up to 55/45, PSA 9 allows 60/40
 
-Be conservative in your grading and provide specific reasoning for your assessment.`;
+2. CORNERS (Very Critical)
+   - Inspect all four corners for:
+     * Sharpness vs rounding
+     * White wear/whitening on corners
+     * Denting or bending
+   - Rate each corner: "Sharp", "Very Slight Wear", "Slight Wear", "Moderate Wear", "Heavy Wear"
+   - Even one rounded corner drops the grade significantly
+
+3. EDGES (Critical)
+   - Examine all four edges for:
+     * Edge whitening (white showing along the edge)
+     * Chipping or fraying
+     * Wear patterns
+   - Rate each edge: "Clean", "Very Minor Whitening", "Minor Whitening", "Moderate Whitening", "Heavy Wear"
+
+4. SURFACE (Critical)
+   - Look for on the front surface:
+     * Scratches (light, moderate, heavy)
+     * Print lines or printing defects
+     * Dents or indentations
+     * Stains or discoloration
+     * Holo scratching (if holofoil card)
+   - If back is visible, check back surface similarly
+   - List all specific defects observed
+
+5. IMAGE QUALITY ASSESSMENT
+   - Note if images are high-resolution enough to grade accurately
+   - List any missing critical angles (back, close-up corners, edges)
+   - Note photo quality issues (blur, lighting, angle)
+
+RESPONSE FORMAT:
+Return ONLY a valid JSON object with this exact structure:
+{
+  "predictedGradeMin": <number 1-10>,
+  "predictedGradeMax": <number 1-10>,
+  "confidence": <number 0.0-1.0>,
+  "centering": {
+    "frontHorizontal": "<ratio like 55/45>",
+    "frontVertical": "<ratio like 60/40>",
+    "backHorizontal": "<ratio or 'unknown'>",
+    "backVertical": "<ratio or 'unknown'>",
+    "assessment": "<detailed description>",
+    "impactOnGrade": "<how this affects final grade>"
+  },
+  "corners": {
+    "topLeft": "<condition description>",
+    "topRight": "<condition description>",
+    "bottomLeft": "<condition description>",
+    "bottomRight": "<condition description>",
+    "assessment": "<overall corner assessment>",
+    "impactOnGrade": "<how this affects final grade>"
+  },
+  "edges": {
+    "top": "<condition description>",
+    "right": "<condition description>",
+    "bottom": "<condition description>",
+    "left": "<condition description>",
+    "assessment": "<overall edge assessment>",
+    "impactOnGrade": "<how this affects final grade>"
+  },
+  "surface": {
+    "frontCondition": "<detailed condition>",
+    "backCondition": "<detailed condition or 'unknown'>",
+    "defects": ["<specific defect 1>", "<specific defect 2>"],
+    "assessment": "<overall surface assessment>",
+    "impactOnGrade": "<how this affects final grade>"
+  },
+  "overallCondition": "<summary of card condition>",
+  "defectFlags": ["<critical defect 1>", "<critical defect 2>"],
+  "gradingReasoning": "<detailed explanation of why you assigned this grade range>",
+  "imageQuality": {
+    "adequateForGrading": <true/false>,
+    "missingViews": ["<missing angle 1>"],
+    "photoQualityIssues": ["<issue 1>"]
+  },
+  "recommendations": ["<recommendation 1>", "<recommendation 2>"]
+}
+
+GRADING GUIDELINES:
+- PSA 10: Near perfect centering (55/45), sharp corners, clean edges, pristine surface
+- PSA 9: Centering 60/40, one minor corner/edge flaw allowed
+- PSA 8: Centering 65/35, minor corner wear, light edge whitening acceptable
+- PSA 7: Centering 70/30, slight corner rounding, visible edge wear
+- PSA 6: Centering 75/25, corner whitening, edge whitening visible
+- PSA 5 and below: Multiple defects, creases, heavy wear
+
+Be CONSERVATIVE. When uncertain between two grades, choose the lower one.`;
   }
 
   private validateCardParseResult(parsed: any): CardParseResult {
