@@ -7,7 +7,7 @@ import logger from './lib/logger';
 import prisma from './lib/db';
 import { ebayService } from './services/ebay';
 import { llmService } from './services/llm';
-import { priceChartingService } from './services/pricecharting';
+import { justTCGService } from './services/justtcg';
 import { ListingScorer } from './services/scorer';
 import { searchQueue, parseQueue, gradeQueue, priceQueue, scoreQueue } from './queues';
 import type { EbaySearchCriteria } from './services/ebay';
@@ -273,7 +273,7 @@ priceQueue.process('price-lookup', async (job) => {
       return;
     }
 
-    const priceData = await priceChartingService.getCardPrices(
+    const priceData = await justTCGService.getCardPrices(
       evaluation.cardName,
       evaluation.cardSet,
       evaluation.cardNumber
@@ -342,14 +342,15 @@ scoreQueue.process('score-deal', async (job) => {
     // Update search progress
     const search = await prisma.search.findUnique({
       where: { id: listing.searchId },
-      include: { _count: { select: { listings: true } } },
     });
 
     if (search) {
       const processedCount = await prisma.evaluation.count({
         where: {
           listing: { searchId: listing.searchId },
-          dealScore: { not: null },
+          NOT: {
+            dealScore: null,
+          },
         },
       });
 

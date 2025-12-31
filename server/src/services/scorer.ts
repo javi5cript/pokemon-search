@@ -431,7 +431,9 @@ export class ListingScorer {
     if (evaluation && evaluation.marketPricePsa9 && evaluation.predictedGradeMin >= 8) {
       expectedValue = evaluation.marketPricePsa9;
       const totalCost = listing.price + (listing.shippingCost || 0);
-      dealMargin = expectedValue - totalCost;
+      if (expectedValue !== null) {
+        dealMargin = expectedValue - totalCost;
+      }
     }
 
     return {

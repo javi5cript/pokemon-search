@@ -24,10 +24,10 @@ const configSchema = z.object({
     rateLimitPerSecond: z.coerce.number().default(5),
   }),
   
-  // PriceCharting API
-  priceCharting: z.object({
+  // JustTCG API
+  justTCG: z.object({
     apiKey: z.string().min(1),
-    rateLimitPerMinute: z.coerce.number().default(100),
+    rateLimitPerMinute: z.coerce.number().default(60),
   }),
   
   // OpenAI API
@@ -66,9 +66,9 @@ function loadConfig(): Config {
         environment: process.env.EBAY_ENVIRONMENT,
         rateLimitPerSecond: process.env.EBAY_RATE_LIMIT_PER_SECOND,
       },
-      priceCharting: {
-        apiKey: process.env.PRICECHARTING_API_KEY,
-        rateLimitPerMinute: process.env.PRICECHARTING_RATE_LIMIT_PER_MINUTE,
+      justTCG: {
+        apiKey: process.env.JUSTTCG_API_KEY,
+        rateLimitPerMinute: process.env.JUSTTCG_RATE_LIMIT_PER_MINUTE,
       },
       openai: {
         apiKey: process.env.OPENAI_API_KEY,

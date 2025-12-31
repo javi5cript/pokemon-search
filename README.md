@@ -11,7 +11,7 @@ This application uses a modern microservices architecture with:
 - **Orchestrator**: Background job processing with BullMQ
 - **Database**: PostgreSQL for persistence
 - **Cache**: Redis for pricing and API response caching
-- **External APIs**: eBay Browse API, PriceCharting API
+- **External APIs**: eBay Browse API, JustTCG API
 - **LLM**: OpenAI GPT-4V for image analysis and text parsing
 
 ## System Components
@@ -65,7 +65,7 @@ This application uses a modern microservices architecture with:
 ┌─────────────────────────────────────────────────────────────────┐
 │                     External Services                            │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
-│  │  eBay API    │  │ PriceCharting│  │  OpenAI GPT-4V      │  │
+│  │  eBay API    │  │   JustTCG    │  │  OpenAI GPT-4V      │  │
 │  │  Browse API  │  │     API      │  │  Vision + Text      │  │
 │  └──────────────┘  └──────────────┘  └──────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
@@ -75,7 +75,7 @@ This application uses a modern microservices architecture with:
 
 1. **Intelligent Search**: Flexible eBay search with multiple criteria
 2. **AI Grading**: Vision-based condition assessment using GPT-4V
-3. **Market Pricing**: Real-time pricing data from PriceCharting
+3. **Market Pricing**: Real-time pricing data from JustTCG
 4. **Smart Scoring**: Multi-factor deal score combining price, condition, and seller data
 5. **Real-time Updates**: Server-sent events for live result updates
 6. **Caching**: Aggressive caching for pricing and API responses
@@ -124,7 +124,7 @@ pokemon-card-finder/
 │   │   ├── workers/      # BullMQ workers
 │   │   ├── services/     # Business logic
 │   │   │   ├── ebay/     # eBay integration
-│   │   │   ├── pricing/  # PriceCharting integration
+│   │   │   ├── pricing/  # JustTCG integration
 │   │   │   ├── llm/      # OpenAI integration
 │   │   │   └── scoring/  # Evaluation logic
 │   │   ├── db/           # Database/Prisma

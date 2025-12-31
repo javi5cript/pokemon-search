@@ -83,7 +83,7 @@ REDIS_URL=
 EBAY_APP_ID=your_ebay_app_id_here
 EBAY_CLIENT_ID=your_ebay_client_id_here
 EBAY_CLIENT_SECRET=your_ebay_client_secret_here
-PRICECHARTING_API_KEY=your_pricecharting_key_here
+JUSTTCG_API_KEY=your_justtcg_key_here
 OPENAI_API_KEY=your_openai_key_here
 ```
 
@@ -105,7 +105,7 @@ OPENAI_API_KEY=your_openai_key_here
 To actually search eBay, get pricing data, and use AI evaluation, you need:
 
 1. **eBay API**: Sign up at https://developer.ebay.com/
-2. **PriceCharting API**: Sign up at https://www.pricecharting.com/api
+2. **JustTCG API**: Sign up at https://justtcg.com/ (free tier available)
 3. **OpenAI API**: Sign up at https://platform.openai.com/
 
 Once you have the keys, update them in `server/.env`
