@@ -52,6 +52,8 @@ export default function SearchResults({ searchId }: SearchResultsProps) {
   const [searchData, setSearchData] = useState<SearchData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 25;
 
   useEffect(() => {
     const fetchResults = async () => {
@@ -120,6 +122,17 @@ export default function SearchResults({ searchId }: SearchResultsProps) {
     return `PSA ${min}-${max}`;
   };
 
+  // Pagination calculations
+  const totalPages = Math.ceil(searchData.listings.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentListings = searchData.listings.slice(startIndex, endIndex);
+
+  const goToPage = (page: number) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   return (
     <div className="space-y-6">
       {/* Status Card */}
@@ -161,8 +174,21 @@ export default function SearchResults({ searchId }: SearchResultsProps) {
           <p className="text-gray-400 mt-2">Add eBay API keys to fetch live listings</p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {searchData.listings.map((listing) => (
+        <>
+          {/* Pagination Info */}
+          <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between">
+            <p className="text-sm text-gray-600">
+              Showing <span className="font-semibold">{startIndex + 1}</span> to{' '}
+              <span className="font-semibold">{Math.min(endIndex, searchData.listings.length)}</span> of{' '}
+              <span className="font-semibold">{searchData.listings.length}</span> results
+            </p>
+            <p className="text-sm text-gray-500">
+              Page {currentPage} of {totalPages}
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            {currentListings.map((listing) => (
             <div
               key={listing.id}
               className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-shadow overflow-hidden"
@@ -307,7 +333,65 @@ export default function SearchResults({ searchId }: SearchResultsProps) {
               </div>
             </div>
           ))}
-        </div>
+          </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="bg-white rounded-lg shadow-lg p-6 flex items-center justify-center gap-2">
+              <button
+                onClick={() => goToPage(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+              >
+                ← Previous
+              </button>
+
+              <div className="flex gap-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                  // Show first page, last page, current page, and pages around current
+                  const showPage =
+                    page === 1 ||
+                    page === totalPages ||
+                    (page >= currentPage - 2 && page <= currentPage + 2);
+
+                  if (!showPage) {
+                    // Show ellipsis
+                    if (page === currentPage - 3 || page === currentPage + 3) {
+                      return (
+                        <span key={page} className="px-3 py-2 text-gray-400">
+                          ...
+                        </span>
+                      );
+                    }
+                    return null;
+                  }
+
+                  return (
+                    <button
+                      key={page}
+                      onClick={() => goToPage(page)}
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        currentPage === page
+                          ? 'bg-indigo-600 text-white'
+                          : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={() => goToPage(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+              >
+                Next →
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

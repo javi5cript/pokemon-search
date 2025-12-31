@@ -207,6 +207,8 @@ gradeQueue.process('grade-card', async (job) => {
 
     if (!listing || !listing.evaluation) {
       logger.warn({ listingId }, 'Listing or evaluation not found');
+      // Still queue scoring with what we have
+      await scoreQueue.add('score-deal', { listingId });
       return;
     }
 
@@ -215,8 +217,16 @@ gradeQueue.process('grade-card', async (job) => {
       logger.warn({ listingId }, 'No images to grade');
       await prisma.evaluation.update({
         where: { listingId },
-        data: { gradingDetails: JSON.stringify({ error: 'No images available' }) },
+        data: { 
+          gradingDetails: JSON.stringify({ error: 'No images available' }),
+          // Set default grades so scoring can still proceed
+          predictedGradeMin: 5,
+          predictedGradeMax: 7,
+          gradeConfidence: 0.3,
+        },
       });
+      // Queue scoring even without images
+      await scoreQueue.add('score-deal', { listingId });
       return;
     }
 
@@ -252,7 +262,21 @@ gradeQueue.process('grade-card', async (job) => {
     await scoreQueue.add('score-deal', { listingId });
   } catch (error) {
     logger.error({ error, listingId }, 'Card grading failed');
-    throw error;
+    // Set fallback grades and still proceed to scoring
+    try {
+      await prisma.evaluation.update({
+        where: { listingId },
+        data: {
+          predictedGradeMin: 5,
+          predictedGradeMax: 7,
+          gradeConfidence: 0.2,
+          gradingDetails: JSON.stringify({ error: 'Grading failed', message: error instanceof Error ? error.message : 'Unknown error' }),
+        },
+      });
+      await scoreQueue.add('score-deal', { listingId });
+    } catch (updateError) {
+      logger.error({ error: updateError, listingId }, 'Failed to set fallback grades');
+    }
   }
 });
 
@@ -268,8 +292,17 @@ priceQueue.process('price-lookup', async (job) => {
       where: { listingId },
     });
 
-    if (!evaluation || !evaluation.cardName || !evaluation.cardSet) {
-      logger.warn({ listingId }, 'Evaluation incomplete, skipping pricing');
+    if (!evaluation) {
+      logger.warn({ listingId }, 'Evaluation not found for pricing');
+      // Queue scoring anyway - it can work with just grading data
+      await scoreQueue.add('score-deal', { listingId });
+      return;
+    }
+
+    if (!evaluation.cardName || !evaluation.cardSet) {
+      logger.warn({ listingId, cardName: evaluation.cardName, cardSet: evaluation.cardSet }, 'Card info incomplete, skipping pricing but proceeding to scoring');
+      // Queue scoring even without pricing - better to have partial data than nothing
+      await scoreQueue.add('score-deal', { listingId });
       return;
     }
 
@@ -293,14 +326,22 @@ priceQueue.process('price-lookup', async (job) => {
         },
       });
 
-      logger.info({ listingId }, 'Pricing data retrieved');
-      
-      // Queue scoring job (in case grading already completed)
-      await scoreQueue.add('score-deal', { listingId });
+      logger.info({ listingId, ungraded: priceData.ungraded }, 'Pricing data retrieved');
+    } else {
+      logger.warn({ listingId }, 'No pricing data found, proceeding to scoring anyway');
     }
+    
+    // Always queue scoring job (in case grading already completed)
+    await scoreQueue.add('score-deal', { listingId });
+    
   } catch (error) {
     logger.error({ error, listingId }, 'Price lookup failed');
-    throw error;
+    // Still queue scoring - partial data is better than nothing
+    try {
+      await scoreQueue.add('score-deal', { listingId });
+    } catch (queueError) {
+      logger.error({ error: queueError, listingId }, 'Failed to queue scoring after price lookup failure');
+    }
   }
 });
 
@@ -348,8 +389,8 @@ scoreQueue.process('score-deal', async (job) => {
       const processedCount = await prisma.evaluation.count({
         where: {
           listing: { searchId: listing.searchId },
-          NOT: {
-            dealScore: null,
+          dealScore: { 
+            not: 0,
           },
         },
       });

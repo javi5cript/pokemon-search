@@ -8,7 +8,7 @@ interface SearchFormProps {
 
 export default function SearchForm({ onSearchCreated }: SearchFormProps) {
   const [formData, setFormData] = useState({
-    keywords: '',
+    keywords: 'pokemon tcg',
     listingType: 'all',
     minPrice: '',
     maxPrice: '',
@@ -20,6 +20,7 @@ export default function SearchForm({ onSearchCreated }: SearchFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [isDefaultValue, setIsDefaultValue] = useState(true);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,7 +119,16 @@ export default function SearchForm({ onSearchCreated }: SearchFormProps) {
           type="text"
           required
           value={formData.keywords}
-          onChange={(e) => setFormData({ ...formData, keywords: e.target.value })}
+          onChange={(e) => {
+            setFormData({ ...formData, keywords: e.target.value });
+            setIsDefaultValue(false);
+          }}
+          onFocus={(e) => {
+            if (isDefaultValue) {
+              setFormData({ ...formData, keywords: '' });
+              setIsDefaultValue(false);
+            }
+          }}
           placeholder="e.g., Charizard Base Set, Pikachu 1st Edition"
           className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 ${
             validationErrors.keywords ? 'border-red-500' : 'border-gray-300'
