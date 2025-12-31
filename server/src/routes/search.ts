@@ -140,6 +140,13 @@ searchRouter.get('/:searchId', async (req, res) => {
           predictedGradeMin: listing.evaluation.predictedGradeMin,
           predictedGradeMax: listing.evaluation.predictedGradeMax,
           gradeConfidence: listing.evaluation.gradeConfidence,
+          gradeReasoning: listing.evaluation.gradeReasoning,
+          gradingDetails: typeof listing.evaluation.gradingDetails === 'string'
+            ? JSON.parse(listing.evaluation.gradingDetails)
+            : listing.evaluation.gradingDetails,
+          defectFlags: typeof listing.evaluation.defectFlags === 'string'
+            ? JSON.parse(listing.evaluation.defectFlags)
+            : (listing.evaluation.defectFlags || []),
           expectedValue: listing.evaluation.expectedValue,
           dealMargin: listing.evaluation.dealMargin,
           dealScore: listing.evaluation.dealScore,

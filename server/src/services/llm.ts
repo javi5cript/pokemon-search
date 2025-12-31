@@ -154,6 +154,14 @@ export class LLMService {
     if (config.openai.baseURL) {
       clientConfig.baseURL = config.openai.baseURL;
       logger.info({ baseURL: config.openai.baseURL }, 'Using custom OpenAI base URL');
+      
+      // HiCap requires the api-key header
+      if (config.openai.baseURL.includes('hicap.ai')) {
+        clientConfig.defaultHeaders = {
+          'api-key': config.openai.apiKey,
+        };
+        logger.info('Added HiCap-specific api-key header');
+      }
     }
 
     if (config.openai.organization) {
