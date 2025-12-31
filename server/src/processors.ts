@@ -103,18 +103,18 @@ searchQueue.process('ebay-search', async (job) => {
       }
     }
 
-    // Update search with results
+    // Update search with results - set to PROCESSING since we need to evaluate them
     await prisma.search.update({
       where: { id: searchId },
       data: {
-        status: 'COMPLETED',
+        status: 'PROCESSING',
         totalListings: savedCount,
-        processedListings: savedCount,
-        completedAt: new Date(),
+        processedListings: 0, // Will be updated as listings are scored
+        completedAt: null,
       },
     });
 
-    logger.info({ searchId, savedCount }, 'Search completed successfully');
+    logger.info({ searchId, savedCount }, 'Search listings fetched, starting processing pipeline');
   } catch (error) {
     logger.error({ error, searchId }, 'Search job failed');
     
@@ -183,8 +183,11 @@ parseQueue.process('parse-card', async (job) => {
 
     logger.info({ listingId, cardName: parseResult.cardName }, 'Card parsed successfully');
     
-    // Queue grading and pricing jobs
-    await gradeQueue.add('grade-card', { listingId });
+    // DISABLED: Auto-grading - Users will manually grade cards they're interested in
+    // This prevents confusion where all listings get graded automatically
+    // await gradeQueue.add('grade-card', { listingId });
+    
+    // Still queue pricing lookup (doesn't require OpenAI calls)
     await priceQueue.add('price-lookup', { listingId });
   } catch (error) {
     logger.error({ error, listingId }, 'Card parse failed');

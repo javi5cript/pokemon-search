@@ -146,10 +146,27 @@ export class LLMService {
   private client: OpenAI;
 
   constructor() {
-    this.client = new OpenAI({
+    const clientConfig: any = {
       apiKey: config.openai.apiKey,
-      baseURL: 'https://api.hicap.ai/v1',
-    });
+    };
+
+    // Use custom baseURL if provided
+    if (config.openai.baseURL) {
+      clientConfig.baseURL = config.openai.baseURL;
+      logger.info({ baseURL: config.openai.baseURL }, 'Using custom OpenAI base URL');
+    }
+
+    if (config.openai.organization) {
+      clientConfig.organization = config.openai.organization;
+    }
+
+    this.client = new OpenAI(clientConfig);
+    
+    logger.info({
+      model: config.openai.model,
+      visionModel: config.openai.visionModel,
+      hasBaseURL: !!config.openai.baseURL,
+    }, 'LLM Service initialized');
   }
 
   /**
@@ -160,11 +177,13 @@ export class LLMService {
     description: string = '',
     itemSpecifics: Record<string, string> = {}
   ): Promise<CardParseResult> {
-    logger.info('Parsing card from listing text');
+    logger.info({ title, hasDescription: !!description }, 'Starting card parsing - calling OpenAI API');
 
     const userPrompt = this.buildCardParserPrompt(title, description, itemSpecifics);
 
     try {
+      logger.info({ model: config.openai.model }, 'Making OpenAI API call for card parsing');
+      
       const completion = await this.client.chat.completions.create({
         model: config.openai.model,
         messages: [
@@ -175,15 +194,28 @@ export class LLMService {
         response_format: { type: 'json_object' },
       });
 
+      logger.info({ 
+        usage: completion.usage,
+        finishReason: completion.choices[0].finish_reason 
+      }, 'OpenAI API call completed for card parsing');
+
       const responseText = completion.choices[0].message.content || '{}';
       const parsed = JSON.parse(responseText);
 
-      logger.info({ confidence: parsed.confidence }, 'Card parsed successfully');
+      logger.info({ 
+        confidence: parsed.confidence,
+        cardName: parsed.cardName 
+      }, 'Card parsed successfully');
 
       return this.validateCardParseResult(parsed);
 
     } catch (error: any) {
-      logger.error({ error }, 'Card parsing failed');
+      logger.error({ 
+        error: error.message,
+        code: error.code,
+        status: error.status,
+        type: error.type
+      }, 'Card parsing failed');
 
       // Return unknown result on error
       return {
@@ -219,7 +251,11 @@ export class LLMService {
       return this.getNoImagesGradingResult();
     }
 
-    logger.info({ imageCount: images.length, cardName }, 'Grading card from images');
+    logger.info({ 
+      imageCount: images.length, 
+      cardName,
+      imageUrls: images 
+    }, 'Starting card grading - calling OpenAI Vision API');
 
     const userPrompt = this.buildImageGraderPrompt(images.length, cardName, set, year);
 
@@ -239,6 +275,12 @@ export class LLMService {
         },
       ];
 
+      logger.info({ 
+        model: config.openai.visionModel,
+        maxTokens: 3000,
+        imageCount: images.length 
+      }, 'Making OpenAI Vision API call for card grading');
+
       const completion = await this.client.chat.completions.create({
         model: config.openai.visionModel,
         messages,
@@ -247,6 +289,11 @@ export class LLMService {
         response_format: { type: 'json_object' },
       });
 
+      logger.info({ 
+        usage: completion.usage,
+        finishReason: completion.choices[0].finish_reason 
+      }, 'OpenAI Vision API call completed for card grading');
+
       const responseText = completion.choices[0].message.content || '{}';
       const parsed = JSON.parse(responseText);
 
@@ -254,6 +301,7 @@ export class LLMService {
         {
           gradeRange: `${parsed.predictedGradeMin}-${parsed.predictedGradeMax}`,
           confidence: parsed.confidence,
+          hasDefects: parsed.defectFlags?.length > 0
         },
         'Card graded successfully'
       );

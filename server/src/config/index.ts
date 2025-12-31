@@ -33,6 +33,7 @@ const configSchema = z.object({
   // OpenAI API
   openai: z.object({
     apiKey: z.string().min(1),
+    baseURL: z.string().optional(),
     organization: z.string().optional(),
     model: z.string().default('gpt-4-turbo'),
     visionModel: z.string().default('gpt-4-vision-preview'),
@@ -72,6 +73,7 @@ function loadConfig(): Config {
       },
       openai: {
         apiKey: process.env.OPENAI_API_KEY,
+        baseURL: process.env.OPENAI_BASE_URL,
         organization: process.env.OPENAI_ORGANIZATION,
         model: process.env.OPENAI_MODEL,
         visionModel: process.env.OPENAI_VISION_MODEL,

@@ -92,9 +92,7 @@ searchRouter.get('/:searchId', async (req, res) => {
             evaluation: true,
           },
           orderBy: {
-            evaluation: {
-              dealScore: 'desc',
-            },
+            createdAt: 'asc', // Stable ordering by creation time
           },
         },
       },
@@ -158,6 +156,177 @@ searchRouter.get('/:searchId', async (req, res) => {
   } catch (error) {
     logger.error({ error, searchId: req.params.searchId }, 'Failed to fetch search');
     res.status(500).json({ error: 'Failed to fetch search' });
+  }
+});
+
+// POST /api/search/:searchId/listing/:listingId/grade - Trigger on-demand grading
+searchRouter.post('/:searchId/listing/:listingId/grade', async (req, res) => {
+  try {
+    const { searchId, listingId } = req.params;
+    
+    const listing = await prisma.listing.findFirst({
+      where: {
+        id: listingId,
+        searchId: searchId,
+      },
+      include: {
+        evaluation: true,
+      },
+    });
+    
+    if (!listing) {
+      res.status(404).json({ error: 'Listing not found' });
+      return;
+    }
+
+    // Import services here to avoid circular dependencies
+    const { llmService } = await import('../services/llm');
+    const { justTCGService } = await import('../services/justtcg');
+    const { ListingScorer } = await import('../services/scorer');
+
+    try {
+      // Parse images - handle both string and array formats
+      let images: string[] = [];
+      
+      if (typeof listing.images === 'string') {
+        try {
+          images = JSON.parse(listing.images);
+        } catch (parseError) {
+          logger.warn({ listingId, images: listing.images }, 'Failed to parse images JSON');
+          images = [];
+        }
+      } else if (Array.isArray(listing.images)) {
+        images = listing.images;
+      }
+      
+      logger.info({ listingId, imageCount: images.length, imagesType: typeof listing.images }, 'Parsed listing images');
+      
+      if (!images || images.length === 0) {
+        res.status(400).json({ 
+          error: 'No images available for grading',
+          message: 'This listing has no images to analyze',
+          listingId: listing.id 
+        });
+        return;
+      }
+
+      logger.info({ listingId, imageCount: images.length }, 'Starting on-demand grading');
+
+      // Grade the card
+      const gradeResult = await llmService.gradeCard(
+        images,
+        listing.evaluation?.cardName || 'unknown',
+        listing.evaluation?.cardSet || 'unknown',
+        listing.evaluation?.year || 'unknown'
+      );
+
+      // Update evaluation with grading results (use upsert to be safe)
+      const updatedEvaluation = await prisma.evaluation.upsert({
+        where: { listingId },
+        update: {
+          predictedGradeMin: gradeResult.predictedGradeMin,
+          predictedGradeMax: gradeResult.predictedGradeMax,
+          gradeConfidence: gradeResult.confidence,
+          defectFlags: JSON.stringify(gradeResult.defectFlags),
+          gradeReasoning: gradeResult.gradingReasoning,
+          gradingDetails: JSON.stringify({
+            centering: gradeResult.centering,
+            corners: gradeResult.corners,
+            edges: gradeResult.edges,
+            surface: gradeResult.surface,
+            imageQuality: gradeResult.imageQuality,
+          }),
+        },
+        create: {
+          listingId,
+          predictedGradeMin: gradeResult.predictedGradeMin,
+          predictedGradeMax: gradeResult.predictedGradeMax,
+          gradeConfidence: gradeResult.confidence,
+          defectFlags: JSON.stringify(gradeResult.defectFlags),
+          gradeReasoning: gradeResult.gradingReasoning,
+          gradingDetails: JSON.stringify({
+            centering: gradeResult.centering,
+            corners: gradeResult.corners,
+            edges: gradeResult.edges,
+            surface: gradeResult.surface,
+            imageQuality: gradeResult.imageQuality,
+          }),
+        },
+      });
+
+      // Get updated listing with evaluation for scoring
+      const listingForScoring = await prisma.listing.findUnique({
+        where: { id: listingId },
+        include: { evaluation: true },
+      });
+
+      if (listingForScoring && listingForScoring.evaluation) {
+        // Score the deal
+        const scorer = new ListingScorer();
+        const scoreResult = scorer.scoreListing(listingForScoring, listingForScoring.evaluation);
+
+        // Update with scores
+        await prisma.evaluation.update({
+          where: { listingId },
+          data: {
+            expectedValue: scoreResult.expectedValue || 0,
+            dealMargin: scoreResult.dealMargin || 0,
+            dealScore: scoreResult.dealScore || 0,
+            isQualified: scoreResult.isQualified ? 1 : 0,
+            qualificationFlags: JSON.stringify(scoreResult.qualificationFlags || []),
+            softScores: JSON.stringify(scoreResult.softScores || {}),
+          },
+        });
+      }
+
+      logger.info({ 
+        listingId, 
+        gradeRange: `${gradeResult.predictedGradeMin}-${gradeResult.predictedGradeMax}` 
+      }, 'On-demand grading completed');
+
+      res.json({
+        success: true,
+        listingId: listing.id,
+        grading: {
+          predictedGradeMin: gradeResult.predictedGradeMin,
+          predictedGradeMax: gradeResult.predictedGradeMax,
+          confidence: gradeResult.confidence,
+          defectFlags: gradeResult.defectFlags,
+          reasoning: gradeResult.gradingReasoning,
+          details: {
+            centering: gradeResult.centering,
+            corners: gradeResult.corners,
+            edges: gradeResult.edges,
+            surface: gradeResult.surface,
+            imageQuality: gradeResult.imageQuality,
+          },
+        },
+      });
+    } catch (error) {
+      logger.error({ error, listingId }, 'On-demand grading failed');
+      
+      res.status(500).json({ 
+        error: 'Grading failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        listingId: listing.id,
+        details: error instanceof Error ? {
+          name: error.name,
+          message: error.message,
+          stack: error.stack,
+        } : null,
+      });
+    }
+  } catch (error) {
+    logger.error({ error, searchId: req.params.searchId, listingId: req.params.listingId }, 'Failed to process grading request');
+    res.status(500).json({ 
+      error: 'Failed to process grading request',
+      message: error instanceof Error ? error.message : 'Unknown error',
+      details: error instanceof Error ? {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+      } : null,
+    });
   }
 });
 
