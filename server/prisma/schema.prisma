@@ -122,6 +122,8 @@ model Evaluation {
   
   // ===== SCORING =====
   expectedValue      Float   @default(0) @map("expected_value")
+  expectedValueMin   Float   @default(0) @map("expected_value_min")
+  expectedValueMax   Float   @default(0) @map("expected_value_max")
   dealMargin         Float   @default(0) @map("deal_margin")
   dealScore          Float   @default(0) @map("deal_score")
   qualificationFlags String  @default("[]") @map("qualification_flags") // JSON array

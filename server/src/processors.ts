@@ -373,6 +373,8 @@ scoreQueue.process('score-deal', async (job) => {
       where: { listingId },
       data: {
         expectedValue: scoreResult.expectedValue || 0,
+        expectedValueMin: scoreResult.expectedValueMin || 0,
+        expectedValueMax: scoreResult.expectedValueMax || 0,
         dealMargin: scoreResult.dealMargin || 0,
         dealScore: scoreResult.dealScore || 0,
         isQualified: scoreResult.isQualified ? 1 : 0,

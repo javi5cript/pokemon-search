@@ -99,29 +99,12 @@ export class JustTCGService {
   }
 
   /**
-   * Rate limiting helper
+   * Rate limiting helper - DISABLED
+   * Let the API handle its own rate limits instead of imposing artificial client-side limits
    */
   private async checkRateLimit(): Promise<void> {
-    const now = Date.now();
-    const elapsed = now - this.rateLimitWindow;
-
-    // Reset counter every minute
-    if (elapsed >= 60000) {
-      this.requestCount = 0;
-      this.rateLimitWindow = now;
-      return;
-    }
-
-    // Check if we're at limit
-    if (this.requestCount >= config.justTCG.rateLimitPerMinute) {
-      const waitTime = 60000 - elapsed;
-      logger.warn({ waitTime }, 'JustTCG rate limit reached, waiting');
-      await this.delay(waitTime);
-      this.requestCount = 0;
-      this.rateLimitWindow = Date.now();
-    }
-
-    this.requestCount++;
+    // No artificial rate limiting - let the API return its own limits
+    return;
   }
 
   /**
@@ -215,6 +198,8 @@ export class JustTCGService {
 
   /**
    * Build search query string
+   * Standardizes format to "Pokemon Name CardNumber" (e.g., "Dachsbun EX 160")
+   * Set is NOT included as it can cause false negatives in JustTCG search
    */
   private buildSearchQuery(
     cardName: string,
@@ -224,27 +209,36 @@ export class JustTCGService {
   ): string {
     const parts: string[] = [];
     
-    // Card name
+    // Standardized format: ONLY Pokemon Name + Card Number
+    // This matches JustTCG's expected format for better search results
     if (cardName && cardName !== 'unknown') {
       parts.push(cardName);
     }
     
-    // Set name
-    if (set && set !== 'unknown') {
-      parts.push(set);
-    }
-    
-    // Card number (without # prefix for JustTCG search)
+    // Add card number directly after name (critical for matching)
     if (cardNumber && cardNumber !== 'unknown') {
-      parts.push(cardNumber);
+      // Remove any slashes or extra formatting from card number
+      const cleanNumber = cardNumber.split('/')[0].trim();
+      parts.push(cleanNumber);
     }
     
-    // Variant (Holo, 1st Edition, etc.)
+    // NOTE: Set is intentionally NOT included - it can cause false negatives
+    // JustTCG searches work better with just name + number
+    
+    // Variant (Holo, 1st Edition, etc.) - only if specified
     if (variant && variant !== 'unknown') {
       parts.push(variant);
     }
 
-    return parts.join(' ');
+    const query = parts.join(' ');
+    logger.info({ 
+      cardName, 
+      cardNumber, 
+      excludedSet: set,
+      query 
+    }, 'Built JustTCG search query (set excluded for better results)');
+    
+    return query;
   }
 
   /**
@@ -305,10 +299,25 @@ export class JustTCGService {
     } catch (error: any) {
       // Handle rate limiting
       if (error.response?.status === 429) {
-        logger.warn('JustTCG rate limit hit');
+        logger.warn({ 
+          status: error.response?.status,
+          data: error.response?.data,
+          headers: error.response?.headers
+        }, 'JustTCG rate limit hit - Full response');
         await this.delay(2000);
         throw new Error('Rate limit exceeded');
       }
+
+      // Log full error details for debugging
+      logger.error({
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        headers: error.response?.headers,
+        url: error.config?.url,
+        method: error.config?.method,
+      }, 'JustTCG API error - Full details');
 
       throw error;
     }

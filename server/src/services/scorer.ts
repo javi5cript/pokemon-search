@@ -416,6 +416,9 @@ export class ListingScorer {
     evaluation: any
   ): {
     expectedValue: number | null;
+    expectedValueMin: number | null;
+    expectedValueMax: number | null;
+    rawPrice: number | null;
     dealMargin: number | null;
     dealScore: number;
     isQualified: boolean;
@@ -424,20 +427,52 @@ export class ListingScorer {
   } {
     const result = ListingScorer.score(listing, evaluation);
     
-    // Calculate expected value and deal margin
+    // Get raw ungraded price from JustTCG
+    const rawPrice = evaluation?.marketPriceUngraded || null;
+    
+    // Calculate expected value based on predicted grade range
     let expectedValue: number | null = null;
+    let expectedValueMin: number | null = null;
+    let expectedValueMax: number | null = null;
     let dealMargin: number | null = null;
     
-    if (evaluation && evaluation.marketPricePsa9 && evaluation.predictedGradeMin >= 8) {
-      expectedValue = evaluation.marketPricePsa9;
-      const totalCost = listing.price + (listing.shippingCost || 0);
+    if (evaluation && evaluation.predictedGradeMin && evaluation.predictedGradeMax) {
+      const gradeMin = evaluation.predictedGradeMin;
+      const gradeMax = evaluation.predictedGradeMax;
+      
+      // Map predicted grades to prices
+      const priceForGrade = (grade: number): number | null => {
+        if (grade >= 10) return evaluation.marketPricePsa10;
+        if (grade >= 9) return evaluation.marketPricePsa9;
+        if (grade >= 8) return evaluation.marketPricePsa8;
+        if (grade >= 7) return evaluation.marketPricePsa7;
+        return evaluation.marketPriceUngraded; // Fallback to ungraded
+      };
+      
+      expectedValueMin = priceForGrade(gradeMin);
+      expectedValueMax = priceForGrade(gradeMax);
+      
+      // Use average of min/max range for deal calculations
+      if (expectedValueMin !== null && expectedValueMax !== null) {
+        expectedValue = (expectedValueMin + expectedValueMax) / 2;
+      } else if (expectedValueMax !== null) {
+        expectedValue = expectedValueMax;
+      } else if (expectedValueMin !== null) {
+        expectedValue = expectedValueMin;
+      }
+      
+      // Calculate deal margin
       if (expectedValue !== null) {
+        const totalCost = listing.price + (listing.shippingCost || 0);
         dealMargin = expectedValue - totalCost;
       }
     }
 
     return {
       expectedValue,
+      expectedValueMin,
+      expectedValueMax,
+      rawPrice,
       dealMargin,
       dealScore: result.dealScore,
       isQualified: result.qualified,

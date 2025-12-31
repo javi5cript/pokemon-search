@@ -3,8 +3,12 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   /* config options here */
   reactCompiler: true,
-  // Enable Turbopack with empty config to silence webpack warning
-  turbopack: {},
+  // Explicitly use webpack instead of Turbopack (default in Next.js 16+)
+  // This is needed because webpack config requires compatibility migration
+  experimental: {
+    // @ts-ignore - disable turbopack
+    turbo: false,
+  },
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback = {

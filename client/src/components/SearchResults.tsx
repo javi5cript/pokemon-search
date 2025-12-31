@@ -704,8 +704,8 @@ export default function SearchResults({ searchId }: SearchResultsProps) {
                           </button>
                         </div>
                       ) : listing.evaluation?.predictedGradeMin ? (
-                        <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg p-4 mt-4">
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg p-4 mt-4">
+                          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                             <div>
                               <p className="text-xs text-gray-600 mb-1">Predicted Grade</p>
                               <p className={`text-lg font-bold ${getGradeColor(listing.evaluation.predictedGradeMin)}`}>
@@ -717,9 +717,20 @@ export default function SearchResults({ searchId }: SearchResultsProps) {
                             </div>
 
                             <div>
-                              <p className="text-xs text-gray-600 mb-1">Expected Value</p>
+                              <p className="text-xs text-gray-600 mb-1">💎 Raw Price</p>
+                              <p className="text-lg font-bold text-blue-600">
+                                ${((listing.evaluation as any).rawPrice || 0).toFixed(2)}
+                              </p>
+                              <p className="text-xs text-gray-500">Ungraded</p>
+                            </div>
+
+                            <div>
+                              <p className="text-xs text-gray-600 mb-1">🎯 Expected Value</p>
                               <p className="text-lg font-bold text-green-600">
                                 ${listing.evaluation.expectedValue.toFixed(2)}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                ${((listing.evaluation as any).expectedValueMin || 0).toFixed(0)} - ${((listing.evaluation as any).expectedValueMax || 0).toFixed(0)}
                               </p>
                             </div>
 
