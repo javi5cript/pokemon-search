@@ -304,6 +304,11 @@ export class SoftScorer {
 
   // --------------------------------------------------------------------------
   // Deal Margin (0-10) - Most Important Factor
+  // 
+  // Evaluates the profit potential using:
+  // - ROI percentage (Return on Investment)
+  // - Absolute profit margin
+  // - Risk-adjusted scoring based on confidence and variance
   // --------------------------------------------------------------------------
   private static scoreDealMargin(listing: Listing, evaluation: Evaluation): number {
     const totalCost = listing.price + listing.shippingCost;
@@ -312,17 +317,48 @@ export class SoftScorer {
     if (expectedValue === 0 || expectedValue === null) return 0;
 
     const margin = expectedValue - totalCost;
-    const marginPercent = (margin / totalCost) * 100;
-
-    // Score based on margin percentage
-    if (marginPercent >= 150) return 10;      // 150%+ margin
-    if (marginPercent >= 100) return 9;       // 100-150% margin
-    if (marginPercent >= 75) return 8;        // 75-100% margin
-    if (marginPercent >= 50) return 7;        // 50-75% margin
-    if (marginPercent >= 25) return 5;        // 25-50% margin
-    if (marginPercent >= 10) return 3;        // 10-25% margin
-    if (marginPercent > 0) return 1;          // Positive margin
-    return 0;                                  // Negative margin
+    const marginPercent = (margin / totalCost) * 100; // ROI percentage
+    
+    // Base score from ROI percentage
+    let score = 0;
+    if (marginPercent >= 200) score = 10;       // 200%+ ROI - exceptional
+    else if (marginPercent >= 150) score = 9.5; // 150-200% ROI
+    else if (marginPercent >= 100) score = 9;   // 100-150% ROI - excellent
+    else if (marginPercent >= 75) score = 8;    // 75-100% ROI
+    else if (marginPercent >= 50) score = 7;    // 50-75% ROI - very good
+    else if (marginPercent >= 35) score = 6;    // 35-50% ROI - good
+    else if (marginPercent >= 25) score = 5;    // 25-35% ROI - decent
+    else if (marginPercent >= 15) score = 3.5;  // 15-25% ROI - marginal
+    else if (marginPercent >= 10) score = 2;    // 10-15% ROI - low
+    else if (marginPercent > 0) score = 1;      // Positive but minimal
+    else return 0;                              // Negative margin - no deal
+    
+    // Adjustment 1: Absolute margin bonus
+    // High-margin deals are more valuable even at lower ROI percentages
+    const absoluteMarginBonus = Math.min(1.5, margin / 500); // Up to +1.5 points for $500+ profit
+    score += absoluteMarginBonus;
+    
+    // Adjustment 2: Confidence penalty
+    // Lower confidence = reduce score due to higher risk
+    const gradeConfidence = evaluation.gradeConfidence ?? 0.5;
+    const confidencePenalty = (1.0 - gradeConfidence) * 2; // Up to -2 points for very low confidence
+    score -= confidencePenalty;
+    
+    // Adjustment 3: Grade variance penalty
+    // Wide grade range = higher variance = riskier investment
+    const gradeRange = (evaluation.predictedGradeMax ?? 0) - (evaluation.predictedGradeMin ?? 0);
+    const variancePenalty = Math.min(1.5, gradeRange * 0.4); // Up to -1.5 points for wide ranges
+    score -= variancePenalty;
+    
+    // Adjustment 4: Pricing confidence
+    // Uncertain pricing data = reduce score
+    const pricingConfidence = evaluation.pricingConfidence ?? 1.0;
+    if (pricingConfidence < 0.7) {
+      score -= (0.7 - pricingConfidence) * 2; // Up to -1.4 points for very uncertain pricing
+    }
+    
+    // Ensure score stays in valid range
+    return Math.max(0, Math.min(10, score));
   }
 
   // --------------------------------------------------------------------------
@@ -437,35 +473,15 @@ export class ListingScorer {
     let dealMargin: number | null = null;
     
     if (evaluation && evaluation.predictedGradeMin && evaluation.predictedGradeMax) {
-      const gradeMin = evaluation.predictedGradeMin;
-      const gradeMax = evaluation.predictedGradeMax;
+      const calculations = this.calculateExpectedValueWithConfidence(
+        evaluation,
+        listing.price + (listing.shippingCost || 0)
+      );
       
-      // Map predicted grades to prices
-      const priceForGrade = (grade: number): number | null => {
-        if (grade >= 10) return evaluation.marketPricePsa10;
-        if (grade >= 9) return evaluation.marketPricePsa9;
-        if (grade >= 8) return evaluation.marketPricePsa8;
-        if (grade >= 7) return evaluation.marketPricePsa7;
-        return evaluation.marketPriceUngraded; // Fallback to ungraded
-      };
-      
-      expectedValueMin = priceForGrade(gradeMin);
-      expectedValueMax = priceForGrade(gradeMax);
-      
-      // Use average of min/max range for deal calculations
-      if (expectedValueMin !== null && expectedValueMax !== null) {
-        expectedValue = (expectedValueMin + expectedValueMax) / 2;
-      } else if (expectedValueMax !== null) {
-        expectedValue = expectedValueMax;
-      } else if (expectedValueMin !== null) {
-        expectedValue = expectedValueMin;
-      }
-      
-      // Calculate deal margin
-      if (expectedValue !== null) {
-        const totalCost = listing.price + (listing.shippingCost || 0);
-        dealMargin = expectedValue - totalCost;
-      }
+      expectedValue = calculations.expectedValue;
+      expectedValueMin = calculations.expectedValueMin;
+      expectedValueMax = calculations.expectedValueMax;
+      dealMargin = calculations.dealMargin;
     }
 
     return {
@@ -478,6 +494,132 @@ export class ListingScorer {
       isQualified: result.qualified,
       qualificationFlags: result.hardFilterResult.failedFilters,
       softScores: result.scoringResult.componentScores,
+    };
+  }
+
+  /**
+   * Calculate expected value using probability-weighted approach with risk adjustments
+   * 
+   * Methodology:
+   * 1. Grade distribution: Use confidence to model probability spread
+   * 2. Conservative bias: Weight toward lower grades when confidence is low
+   * 3. Grading costs: Subtract PSA grading fees (~$30-50 depending on tier)
+   * 4. Pricing confidence: Discount if market data is uncertain
+   * 5. Variance penalty: Reduce value when grade range is wide (higher risk)
+   */
+  private calculateExpectedValueWithConfidence(
+    evaluation: any,
+    totalCost: number
+  ): {
+    expectedValue: number;
+    expectedValueMin: number;
+    expectedValueMax: number;
+    dealMargin: number;
+  } {
+    const gradeMin = evaluation.predictedGradeMin;
+    const gradeMax = evaluation.predictedGradeMax;
+    const gradeConfidence = evaluation.gradeConfidence ?? 0.5;
+    const pricingConfidence = evaluation.pricingConfidence ?? 1.0;
+    
+    // Map grades to market prices
+    const priceMap: Record<number, number> = {
+      10: evaluation.marketPricePsa10 ?? 0,
+      9: evaluation.marketPricePsa9 ?? 0,
+      8: evaluation.marketPricePsa8 ?? 0,
+      7: evaluation.marketPricePsa7 ?? 0,
+      6: evaluation.marketPriceUngraded ?? 0, // PSA 6 and below use ungraded price
+      5: evaluation.marketPriceUngraded ?? 0,
+      4: evaluation.marketPriceUngraded ?? 0,
+    };
+    
+    // Step 1: Calculate probability distribution across grade range
+    // High confidence = concentrated around predicted grade
+    // Low confidence = more spread out distribution
+    const gradeRange = gradeMax - gradeMin;
+    const probabilities: Record<number, number> = {};
+    
+    if (gradeRange === 0) {
+      // Single grade predicted - 100% weight
+      probabilities[gradeMax] = 1.0;
+    } else if (gradeRange === 1) {
+      // Two-grade range - split based on confidence
+      // High confidence: 70/30 split favoring higher grade
+      // Low confidence: 50/50 split
+      const higherGradeProb = 0.5 + (gradeConfidence * 0.2);
+      probabilities[gradeMax] = higherGradeProb;
+      probabilities[gradeMin] = 1.0 - higherGradeProb;
+    } else {
+      // Wide range (3+ grades) - apply normal distribution
+      // Mean shifts based on confidence (low confidence = lower mean)
+      const meanGrade = gradeMin + (gradeRange * (0.4 + gradeConfidence * 0.2));
+      const stdDev = gradeRange / (2 + gradeConfidence * 2); // Tighter distribution when confident
+      
+      for (let grade = Math.floor(gradeMin); grade <= Math.ceil(gradeMax); grade++) {
+        // Simplified normal distribution weight
+        const distanceFromMean = Math.abs(grade - meanGrade);
+        const weight = Math.exp(-(distanceFromMean ** 2) / (2 * stdDev ** 2));
+        probabilities[grade] = weight;
+      }
+      
+      // Normalize probabilities to sum to 1.0
+      const totalProb = Object.values(probabilities).reduce((sum, p) => sum + p, 0);
+      for (const grade in probabilities) {
+        probabilities[grade] /= totalProb;
+      }
+    }
+    
+    // Step 2: Calculate probability-weighted expected value
+    let weightedValue = 0;
+    for (const [gradeStr, probability] of Object.entries(probabilities)) {
+      const grade = parseInt(gradeStr);
+      const marketPrice = priceMap[grade] ?? priceMap[Math.floor(grade)] ?? 0;
+      weightedValue += marketPrice * probability;
+    }
+    
+    // Step 3: Apply conservative adjustments
+    
+    // 3a. Grading cost - PSA pricing tiers
+    let gradingCost = 50; // Base: Regular service
+    if (weightedValue > 500) {
+      gradingCost = 100; // Express service recommended for high-value cards
+    } else if (weightedValue > 200) {
+      gradingCost = 75; // Value Plus service
+    }
+    
+    // 3b. Pricing confidence discount
+    // If market data is uncertain, reduce expected value
+    const pricingMultiplier = 0.7 + (pricingConfidence * 0.3); // 0.7 to 1.0
+    
+    // 3c. Grade variance penalty
+    // Wide grade range = higher risk, reduce value
+    const variancePenalty = gradeRange === 0 ? 1.0 : (1.0 - (gradeRange * 0.05)); // 5% penalty per grade of uncertainty
+    
+    // 3d. Confidence multiplier
+    // Lower confidence = additional conservative discount
+    const confidenceMultiplier = 0.85 + (gradeConfidence * 0.15); // 0.85 to 1.0
+    
+    // Apply all adjustments
+    let expectedValue = weightedValue * pricingMultiplier * variancePenalty * confidenceMultiplier;
+    
+    // Subtract grading costs
+    expectedValue = Math.max(0, expectedValue - gradingCost);
+    
+    // Step 4: Calculate min/max range for reference
+    const priceForGrade = (grade: number): number => {
+      return priceMap[grade] ?? priceMap[Math.floor(grade)] ?? 0;
+    };
+    
+    const expectedValueMin = Math.max(0, (priceForGrade(gradeMin) * pricingMultiplier * confidenceMultiplier) - gradingCost);
+    const expectedValueMax = Math.max(0, (priceForGrade(gradeMax) * pricingMultiplier) - gradingCost);
+    
+    // Step 5: Calculate deal margin
+    const dealMargin = expectedValue - totalCost;
+    
+    return {
+      expectedValue: Math.round(expectedValue * 100) / 100,
+      expectedValueMin: Math.round(expectedValueMin * 100) / 100,
+      expectedValueMax: Math.round(expectedValueMax * 100) / 100,
+      dealMargin: Math.round(dealMargin * 100) / 100,
     };
   }
 
