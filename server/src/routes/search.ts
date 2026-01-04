@@ -321,12 +321,21 @@ searchRouter.post('/:searchId/listing/:listingId/grade', async (req, res) => {
       let pricingAttempted = false;
       let pricingError: string | null = null;
       
+      logger.info({ 
+        listingId,
+        hasEvaluation: !!listing.evaluation,
+        cardName: listing.evaluation?.cardName,
+        cardSet: listing.evaluation?.cardSet,
+        cardNumber: listing.evaluation?.cardNumber
+      }, 'Checking if pricing fetch is needed');
+      
       if (listing.evaluation?.cardName && listing.evaluation?.cardSet) {
         pricingAttempted = true;
         logger.info({ 
           listingId, 
           cardName: listing.evaluation.cardName, 
-          cardSet: listing.evaluation.cardSet 
+          cardSet: listing.evaluation.cardSet,
+          cardNumber: listing.evaluation.cardNumber
         }, 'Fetching pricing data from JustTCG');
         
         try {
@@ -336,6 +345,13 @@ searchRouter.post('/:searchId/listing/:listingId/grade', async (req, res) => {
             listing.evaluation.cardNumber || '',
             'English'
           );
+          
+          logger.info({
+            listingId,
+            found: result.found,
+            hasPriceData: !!result.priceData,
+            reasoning: result.reasoning
+          }, 'JustTCG lookup result');
           
           if (result.found && result.priceData) {
             pricingData = {
@@ -347,9 +363,7 @@ searchRouter.post('/:searchId/listing/:listingId/grade', async (req, res) => {
               confidence: result.confidence,
               source: 'justtcg'
             };
-          }
-          
-          if (pricingData) {
+            
             logger.info({ 
               listingId, 
               ungraded: pricingData.ungraded, 
@@ -359,8 +373,9 @@ searchRouter.post('/:searchId/listing/:listingId/grade', async (req, res) => {
               psa10: pricingData.psa10
             }, 'Pricing data fetched successfully');
           } else {
-            pricingError = 'No pricing data returned';
-            logger.warn({ listingId }, 'JustTCG returned no pricing data');
+            // Capture the reason from JustTCG
+            pricingError = result.reasoning || 'No pricing data returned';
+            logger.warn({ listingId, reasoning: result.reasoning }, 'JustTCG returned no pricing data');
           }
         } catch (pricingException) {
           pricingError = pricingException instanceof Error ? pricingException.message : 'Unknown error';

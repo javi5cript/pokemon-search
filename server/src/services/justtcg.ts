@@ -297,15 +297,22 @@ export class JustTCGService {
       };
 
     } catch (error: any) {
-      // Handle rate limiting
+      // Handle rate limiting - don't throw, return structured error
       if (error.response?.status === 429) {
+        const rateLimitMessage = error.response?.data?.message || error.response?.data?.error || 'Daily request limit exceeded';
         logger.warn({ 
-          status: error.response?.status,
+          status: 429,
+          message: rateLimitMessage,
           data: error.response?.data,
-          headers: error.response?.headers
-        }, 'JustTCG rate limit hit - Full response');
-        await this.delay(2000);
-        throw new Error('Rate limit exceeded');
+          retryAfter: error.response?.headers?.['retry-after']
+        }, 'JustTCG rate limit hit');
+        
+        return {
+          found: false,
+          confidence: 0,
+          priceData: null,
+          reasoning: `Rate limit: ${rateLimitMessage}`,
+        };
       }
 
       // Log full error details for debugging
@@ -314,12 +321,16 @@ export class JustTCGService {
         status: error.response?.status,
         statusText: error.response?.statusText,
         data: error.response?.data,
-        headers: error.response?.headers,
         url: error.config?.url,
-        method: error.config?.method,
-      }, 'JustTCG API error - Full details');
+      }, 'JustTCG API error');
 
-      throw error;
+      // Return structured error instead of throwing
+      return {
+        found: false,
+        confidence: 0,
+        priceData: null,
+        reasoning: `API error: ${error.message}`,
+      };
     }
   }
 
