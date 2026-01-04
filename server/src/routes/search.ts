@@ -326,24 +326,32 @@ searchRouter.post('/:searchId/listing/:listingId/grade', async (req, res) => {
         hasEvaluation: !!listing.evaluation,
         cardName: listing.evaluation?.cardName,
         cardSet: listing.evaluation?.cardSet,
-        cardNumber: listing.evaluation?.cardNumber
-      }, 'Checking if pricing fetch is needed');
+        cardNumber: listing.evaluation?.cardNumber,
+        evaluationExists: listing.evaluation !== null && listing.evaluation !== undefined
+      }, '🔍 Checking if pricing fetch is needed');
       
       if (listing.evaluation?.cardName && listing.evaluation?.cardSet) {
         pricingAttempted = true;
+        
+        // Determine language from evaluation or default to English
+        const cardLanguage = listing.evaluation.language && listing.evaluation.language !== 'unknown' 
+          ? listing.evaluation.language 
+          : 'English';
+        
         logger.info({ 
           listingId, 
           cardName: listing.evaluation.cardName, 
           cardSet: listing.evaluation.cardSet,
-          cardNumber: listing.evaluation.cardNumber
-        }, 'Fetching pricing data from JustTCG');
+          cardNumber: listing.evaluation.cardNumber,
+          language: cardLanguage
+        }, '💰 Fetching pricing data from JustTCG');
         
         try {
           const result = await justTCGService.lookupPrice(
             listing.evaluation.cardName,
             listing.evaluation.cardSet,
             listing.evaluation.cardNumber || '',
-            'English'
+            cardLanguage
           );
           
           logger.info({
@@ -379,10 +387,16 @@ searchRouter.post('/:searchId/listing/:listingId/grade', async (req, res) => {
           }
         } catch (pricingException) {
           pricingError = pricingException instanceof Error ? pricingException.message : 'Unknown error';
-          logger.warn({ error: pricingException, listingId }, 'Failed to fetch pricing data');
+          logger.warn({ error: pricingException, listingId }, '❌ Failed to fetch pricing data');
         }
       } else {
-        logger.info({ listingId }, 'Skipping pricing fetch - missing card name or set');
+        logger.warn({ 
+          listingId,
+          hasEvaluation: !!listing.evaluation,
+          cardName: listing.evaluation?.cardName,
+          cardSet: listing.evaluation?.cardSet,
+          reason: !listing.evaluation ? 'no evaluation' : (!listing.evaluation.cardName ? 'missing card name' : 'missing card set')
+        }, '⚠️ Skipping pricing fetch - missing card name or set');
       }
 
       // Update evaluation with grading results and pricing (use upsert to be safe)

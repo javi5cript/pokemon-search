@@ -5,7 +5,7 @@ const prisma = new PrismaClient();
 async function checkPricing() {
   const evals = await prisma.evaluation.findMany({
     orderBy: { updatedAt: 'desc' },
-    take: 5,
+    take: 3,
     select: {
       id: true,
       cardName: true,
@@ -17,7 +17,13 @@ async function checkPricing() {
       marketPricePsa8: true,
       marketPricePsa9: true,
       marketPricePsa10: true,
-      updatedAt: true
+      updatedAt: true,
+      listing: {
+        select: {
+          id: true,
+          title: true
+        }
+      }
     }
   });
 
