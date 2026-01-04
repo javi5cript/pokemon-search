@@ -240,9 +240,75 @@ searchRouter.post('/:searchId/listing/:listingId/grade', async (req, res) => {
         return;
       }
 
-      logger.info({ listingId, imageCount: images.length }, 'Starting on-demand grading');
+      logger.info({ listingId, imageCount: images.length }, 'Starting on-demand grading with enhanced identification');
 
-      // Grade the card
+      // STEP 1: Enhanced card identification from images (if evaluation doesn't have complete data)
+      let needsIdentification = false;
+      if (!listing.evaluation?.cardSet || listing.evaluation?.cardSet === 'unknown' || 
+          !listing.evaluation?.cardName || listing.evaluation?.cardName === 'unknown' ||
+          !listing.evaluation?.cardNumber || listing.evaluation?.cardNumber === 'unknown') {
+        needsIdentification = true;
+      }
+
+      if (needsIdentification) {
+        logger.info({ listingId }, 'Running enhanced card identification from images');
+        
+        try {
+          const imageIdentification = await llmService.identifyCardFromImage(
+            images,
+            listing.title,
+            listing.description || ''
+          );
+
+          // Update evaluation with image-identified data
+          await prisma.evaluation.upsert({
+            where: { listingId },
+            create: {
+              listingId,
+              cardName: imageIdentification.cardName !== 'unknown' ? imageIdentification.cardName : null,
+              cardSet: imageIdentification.set !== 'unknown' ? imageIdentification.set : null,
+              cardNumber: imageIdentification.fullCardNumber !== 'unknown' ? imageIdentification.fullCardNumber : null,
+              rarity: imageIdentification.rarity !== 'unknown' ? imageIdentification.rarity : null,
+              isHolo: imageIdentification.isHolo !== 'unknown' ? (imageIdentification.isHolo ? 1 : 0) : null,
+              year: imageIdentification.year !== 'unknown' ? imageIdentification.year : null,
+              parseConfidence: imageIdentification.confidence,
+              parseMetadata: JSON.stringify({ source: 'image', ...imageIdentification }),
+            },
+            update: {
+              cardName: imageIdentification.cardName !== 'unknown' ? imageIdentification.cardName : undefined,
+              cardSet: imageIdentification.set !== 'unknown' ? imageIdentification.set : undefined,
+              cardNumber: imageIdentification.fullCardNumber !== 'unknown' ? imageIdentification.fullCardNumber : undefined,
+              rarity: imageIdentification.rarity !== 'unknown' ? imageIdentification.rarity : undefined,
+              isHolo: imageIdentification.isHolo !== 'unknown' ? (imageIdentification.isHolo ? 1 : 0) : undefined,
+              year: imageIdentification.year !== 'unknown' ? imageIdentification.year : undefined,
+              parseConfidence: imageIdentification.confidence,
+            },
+          });
+
+          // Refresh listing to get updated evaluation
+          const refreshedListing = await prisma.listing.findUnique({
+            where: { id: listingId },
+            include: { evaluation: true },
+          });
+
+          if (refreshedListing) {
+            listing.evaluation = refreshedListing.evaluation;
+          }
+
+          logger.info({ 
+            listingId, 
+            cardName: imageIdentification.cardName,
+            set: imageIdentification.set,
+            cardNumber: imageIdentification.fullCardNumber,
+            confidence: imageIdentification.confidence
+          }, 'Card identification completed from images');
+
+        } catch (identError) {
+          logger.warn({ error: identError, listingId }, 'Image identification failed, proceeding with existing data');
+        }
+      }
+
+      // STEP 2: Grade the card
       const gradeResult = await llmService.gradeCard(
         images,
         listing.evaluation?.cardName || 'unknown',
@@ -250,7 +316,7 @@ searchRouter.post('/:searchId/listing/:listingId/grade', async (req, res) => {
         listing.evaluation?.year || 'unknown'
       );
 
-      // Fetch pricing data from JustTCG if we have card identification
+      // STEP 3: Fetch pricing data from JustTCG if we have card identification
       let pricingData: any = null;
       if (listing.evaluation?.cardName && listing.evaluation?.cardSet) {
         logger.info({ 

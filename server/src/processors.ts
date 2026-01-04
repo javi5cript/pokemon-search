@@ -131,11 +131,11 @@ searchQueue.process('ebay-search', async (job) => {
 });
 
 /**
- * Process card parsing job
+ * Process card parsing job - Enhanced with image-based identification
  */
 parseQueue.process('parse-card', async (job) => {
   const { listingId } = job.data as { listingId: string };
-  logger.info({ listingId }, 'Starting card parse');
+  logger.info({ listingId }, 'Starting enhanced card parse with image analysis');
 
   try {
     const listing = await prisma.listing.findUnique({ where: { id: listingId } });
@@ -144,40 +144,82 @@ parseQueue.process('parse-card', async (job) => {
       return;
     }
 
-    const parseResult = await llmService.parseCard(
+    // Step 1: Text-based parsing (fast, but may be incomplete)
+    const textParseResult = await llmService.parseCard(
       listing.title,
       listing.description || '',
       listing.itemSpecifics ? JSON.parse(listing.itemSpecifics) : {}
     );
 
+    // Step 2: Image-based identification (more accurate, especially for set info)
+    let finalResult = textParseResult;
+    const images = listing.images ? JSON.parse(listing.images) : [];
+    
+    if (images.length > 0) {
+      try {
+        const imageIdentification = await llmService.identifyCardFromImage(
+          images,
+          listing.title,
+          listing.description || ''
+        );
+
+        // Merge results: Prefer image data for critical fields (set, cardNumber)
+        // But use text data as fallback if image parsing fails
+        finalResult = {
+          ...textParseResult,
+          // Prefer image data for these critical fields
+          cardName: imageIdentification.cardName !== 'unknown' ? imageIdentification.cardName : textParseResult.cardName,
+          set: imageIdentification.set !== 'unknown' ? imageIdentification.set : textParseResult.set,
+          cardNumber: imageIdentification.fullCardNumber !== 'unknown' ? imageIdentification.fullCardNumber : textParseResult.cardNumber,
+          variant: imageIdentification.variant !== 'unknown' ? imageIdentification.variant : textParseResult.variant,
+          rarity: imageIdentification.rarity !== 'unknown' ? imageIdentification.rarity : textParseResult.rarity,
+          isHolo: imageIdentification.isHolo !== 'unknown' ? imageIdentification.isHolo : textParseResult.isHolo,
+          year: imageIdentification.year !== 'unknown' ? imageIdentification.year : textParseResult.year,
+          confidence: Math.max(textParseResult.confidence, imageIdentification.confidence),
+          reasoning: `Image: ${imageIdentification.reasoning}; Text: ${textParseResult.reasoning}`,
+        };
+
+        logger.info({
+          listingId,
+          textSet: textParseResult.set,
+          imageSet: imageIdentification.set,
+          finalSet: finalResult.set,
+          confidence: finalResult.confidence
+        }, 'Merged text and image identification results');
+
+      } catch (error) {
+        logger.warn({ error, listingId }, 'Image identification failed, using text-only results');
+      }
+    }
+
     await prisma.evaluation.upsert({
       where: { listingId },
       create: {
         listingId,
-        cardName: parseResult.cardName === 'unknown' ? null : parseResult.cardName,
-        cardSet: parseResult.set === 'unknown' ? null : parseResult.set,
-        cardNumber: parseResult.cardNumber === 'unknown' ? null : parseResult.cardNumber,
-        year: parseResult.year === 'unknown' ? null : parseResult.year,
-        language: parseResult.language === 'unknown' ? null : parseResult.language,
-        isHolo: typeof parseResult.isHolo === 'boolean' ? (parseResult.isHolo ? 1 : 0) : null,
-        isFirstEdition: typeof parseResult.isFirstEdition === 'boolean' ? (parseResult.isFirstEdition ? 1 : 0) : null,
-        isShadowless: typeof parseResult.isShadowless === 'boolean' ? (parseResult.isShadowless ? 1 : 0) : null,
-        rarity: parseResult.rarity === 'unknown' ? null : parseResult.rarity,
-        parseConfidence: parseResult.confidence,
-        parseMetadata: JSON.stringify(parseResult),
+        cardName: finalResult.cardName === 'unknown' ? null : finalResult.cardName,
+        cardSet: finalResult.set === 'unknown' ? null : finalResult.set,
+        cardNumber: finalResult.cardNumber === 'unknown' ? null : finalResult.cardNumber,
+        year: finalResult.year === 'unknown' ? null : finalResult.year,
+        language: finalResult.language === 'unknown' ? null : finalResult.language,
+        isHolo: typeof finalResult.isHolo === 'boolean' ? (finalResult.isHolo ? 1 : 0) : null,
+        isFirstEdition: typeof finalResult.isFirstEdition === 'boolean' ? (finalResult.isFirstEdition ? 1 : 0) : null,
+        isShadowless: typeof finalResult.isShadowless === 'boolean' ? (finalResult.isShadowless ? 1 : 0) : null,
+        rarity: finalResult.rarity === 'unknown' ? null : finalResult.rarity,
+        parseConfidence: finalResult.confidence,
+        parseMetadata: JSON.stringify(finalResult),
       },
       update: {
-        cardName: parseResult.cardName === 'unknown' ? null : parseResult.cardName,
-        cardSet: parseResult.set === 'unknown' ? null : parseResult.set,
-        cardNumber: parseResult.cardNumber === 'unknown' ? null : parseResult.cardNumber,
-        year: parseResult.year === 'unknown' ? null : parseResult.year,
-        language: parseResult.language === 'unknown' ? null : parseResult.language,
-        isHolo: typeof parseResult.isHolo === 'boolean' ? (parseResult.isHolo ? 1 : 0) : null,
-        isFirstEdition: typeof parseResult.isFirstEdition === 'boolean' ? (parseResult.isFirstEdition ? 1 : 0) : null,
-        isShadowless: typeof parseResult.isShadowless === 'boolean' ? (parseResult.isShadowless ? 1 : 0) : null,
-        rarity: parseResult.rarity === 'unknown' ? null : parseResult.rarity,
-        parseConfidence: parseResult.confidence,
-        parseMetadata: JSON.stringify(parseResult),
+        cardName: finalResult.cardName === 'unknown' ? null : finalResult.cardName,
+        cardSet: finalResult.set === 'unknown' ? null : finalResult.set,
+        cardNumber: finalResult.cardNumber === 'unknown' ? null : finalResult.cardNumber,
+        year: finalResult.year === 'unknown' ? null : finalResult.year,
+        language: finalResult.language === 'unknown' ? null : finalResult.language,
+        isHolo: typeof finalResult.isHolo === 'boolean' ? (finalResult.isHolo ? 1 : 0) : null,
+        isFirstEdition: typeof finalResult.isFirstEdition === 'boolean' ? (finalResult.isFirstEdition ? 1 : 0) : null,
+        isShadowless: typeof finalResult.isShadowless === 'boolean' ? (finalResult.isShadowless ? 1 : 0) : null,
+        rarity: finalResult.rarity === 'unknown' ? null : finalResult.rarity,
+        parseConfidence: finalResult.confidence,
+        parseMetadata: JSON.stringify(finalResult),
       },
     });
 
