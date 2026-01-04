@@ -907,6 +907,33 @@ export default function SearchResults({ searchId }: SearchResultsProps) {
                                 </div>
                               )}
 
+                              {/* Pricing Unavailable Message */}
+                              {listing.evaluation.predictedGradeMin && 
+                               !listing.evaluation.marketPriceUngraded && 
+                               !listing.evaluation.marketPricePsa7 && 
+                               !listing.evaluation.marketPricePsa8 && 
+                               !listing.evaluation.marketPricePsa9 && 
+                               !listing.evaluation.marketPricePsa10 && (
+                                <div className="mb-3">
+                                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                                    <div className="flex items-start gap-2">
+                                      <span className="text-yellow-600 text-lg">⚠️</span>
+                                      <div className="flex-1">
+                                        <h4 className="text-xs font-bold text-yellow-800 mb-1">Pricing Data Unavailable</h4>
+                                        <p className="text-[10px] text-yellow-700">
+                                          Unable to fetch market pricing at this time. This may be due to API rate limits or the card not being found in the pricing database.
+                                        </p>
+                                        {listing.evaluation.pricingSource && (
+                                          <p className="text-[10px] text-yellow-600 mt-1 italic">
+                                            Attempted source: {listing.evaluation.pricingSource}
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
                               {/* 3. Graded Pricing Section (PSA) */}
                               {(listing.evaluation.marketPricePsa7 || listing.evaluation.marketPricePsa8 || 
                                 listing.evaluation.marketPricePsa9 || listing.evaluation.marketPricePsa10) && (

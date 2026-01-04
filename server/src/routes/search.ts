@@ -318,7 +318,11 @@ searchRouter.post('/:searchId/listing/:listingId/grade', async (req, res) => {
 
       // STEP 3: Fetch pricing data from JustTCG if we have card identification
       let pricingData: any = null;
+      let pricingAttempted = false;
+      let pricingError: string | null = null;
+      
       if (listing.evaluation?.cardName && listing.evaluation?.cardSet) {
+        pricingAttempted = true;
         logger.info({ 
           listingId, 
           cardName: listing.evaluation.cardName, 
@@ -341,10 +345,16 @@ searchRouter.post('/:searchId/listing/:listingId/grade', async (req, res) => {
               psa9: pricingData.psa9,
               psa10: pricingData.psa10
             }, 'Pricing data fetched successfully');
+          } else {
+            pricingError = 'No pricing data returned';
+            logger.warn({ listingId }, 'JustTCG returned no pricing data');
           }
-        } catch (pricingError) {
-          logger.warn({ error: pricingError, listingId }, 'Failed to fetch pricing data');
+        } catch (pricingException) {
+          pricingError = pricingException instanceof Error ? pricingException.message : 'Unknown error';
+          logger.warn({ error: pricingException, listingId }, 'Failed to fetch pricing data');
         }
+      } else {
+        logger.info({ listingId }, 'Skipping pricing fetch - missing card name or set');
       }
 
       // Update evaluation with grading results and pricing (use upsert to be safe)
@@ -373,6 +383,10 @@ searchRouter.post('/:searchId/listing/:listingId/grade', async (req, res) => {
             pricingConfidence: pricingData.confidence || 0,
             pricingSource: pricingData.source || 'justtcg',
           }),
+          // Store pricing source even if failed
+          ...(pricingAttempted && !pricingData && {
+            pricingSource: `justtcg-failed: ${pricingError || 'Unknown error'}`,
+          }),
         },
         create: {
           listingId,
@@ -397,6 +411,10 @@ searchRouter.post('/:searchId/listing/:listingId/grade', async (req, res) => {
             marketPricePsa10: pricingData.psa10 || null,
             pricingConfidence: pricingData.confidence || 0,
             pricingSource: pricingData.source || 'justtcg',
+          }),
+          // Store pricing source even if failed
+          ...(pricingAttempted && !pricingData && {
+            pricingSource: `justtcg-failed: ${pricingError || 'Unknown error'}`,
           }),
         },
       });
