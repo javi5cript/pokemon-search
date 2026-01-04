@@ -250,7 +250,38 @@ searchRouter.post('/:searchId/listing/:listingId/grade', async (req, res) => {
         listing.evaluation?.year || 'unknown'
       );
 
-      // Update evaluation with grading results (use upsert to be safe)
+      // Fetch pricing data from JustTCG if we have card identification
+      let pricingData: any = null;
+      if (listing.evaluation?.cardName && listing.evaluation?.cardSet) {
+        logger.info({ 
+          listingId, 
+          cardName: listing.evaluation.cardName, 
+          cardSet: listing.evaluation.cardSet 
+        }, 'Fetching pricing data from JustTCG');
+        
+        try {
+          pricingData = await justTCGService.getPricing(
+            listing.evaluation.cardName,
+            listing.evaluation.cardSet,
+            listing.evaluation.cardNumber || undefined
+          );
+          
+          if (pricingData) {
+            logger.info({ 
+              listingId, 
+              ungraded: pricingData.ungraded, 
+              psa7: pricingData.psa7,
+              psa8: pricingData.psa8,
+              psa9: pricingData.psa9,
+              psa10: pricingData.psa10
+            }, 'Pricing data fetched successfully');
+          }
+        } catch (pricingError) {
+          logger.warn({ error: pricingError, listingId }, 'Failed to fetch pricing data');
+        }
+      }
+
+      // Update evaluation with grading results and pricing (use upsert to be safe)
       const updatedEvaluation = await prisma.evaluation.upsert({
         where: { listingId },
         update: {
@@ -265,6 +296,16 @@ searchRouter.post('/:searchId/listing/:listingId/grade', async (req, res) => {
             edges: gradeResult.edges,
             surface: gradeResult.surface,
             imageQuality: gradeResult.imageQuality,
+          }),
+          // Update pricing if available
+          ...(pricingData && {
+            marketPriceUngraded: pricingData.ungraded || null,
+            marketPricePsa7: pricingData.psa7 || null,
+            marketPricePsa8: pricingData.psa8 || null,
+            marketPricePsa9: pricingData.psa9 || null,
+            marketPricePsa10: pricingData.psa10 || null,
+            pricingConfidence: pricingData.confidence || 0,
+            pricingSource: pricingData.source || 'justtcg',
           }),
         },
         create: {
@@ -281,6 +322,16 @@ searchRouter.post('/:searchId/listing/:listingId/grade', async (req, res) => {
             surface: gradeResult.surface,
             imageQuality: gradeResult.imageQuality,
           }),
+          // Include pricing in create as well
+          ...(pricingData && {
+            marketPriceUngraded: pricingData.ungraded || null,
+            marketPricePsa7: pricingData.psa7 || null,
+            marketPricePsa8: pricingData.psa8 || null,
+            marketPricePsa9: pricingData.psa9 || null,
+            marketPricePsa10: pricingData.psa10 || null,
+            pricingConfidence: pricingData.confidence || 0,
+            pricingSource: pricingData.source || 'justtcg',
+          }),
         },
       });
 
@@ -295,11 +346,13 @@ searchRouter.post('/:searchId/listing/:listingId/grade', async (req, res) => {
         const scorer = new ListingScorer();
         const scoreResult = scorer.scoreListing(listingForScoring, listingForScoring.evaluation);
 
-        // Update with scores
+        // Update with scores including expectedValueMin/Max
         await prisma.evaluation.update({
           where: { listingId },
           data: {
             expectedValue: scoreResult.expectedValue || 0,
+            expectedValueMin: scoreResult.expectedValueMin || 0,
+            expectedValueMax: scoreResult.expectedValueMax || 0,
             dealMargin: scoreResult.dealMargin || 0,
             dealScore: scoreResult.dealScore || 0,
             isQualified: scoreResult.isQualified ? 1 : 0,

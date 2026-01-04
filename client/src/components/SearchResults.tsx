@@ -739,34 +739,42 @@ export default function SearchResults({ searchId }: SearchResultsProps) {
                               </p>
                             </div>
 
-                            <div>
-                              <p className="text-xs text-gray-600 mb-1">💎 Raw Price</p>
-                              <p className="text-lg font-bold text-blue-600">
-                                ${((listing.evaluation as any).rawPrice || 0).toFixed(2)}
-                              </p>
-                              <p className="text-xs text-gray-500">Ungraded</p>
-                            </div>
+                            {listing.evaluation.marketPriceUngraded && listing.evaluation.marketPriceUngraded > 0 && (
+                              <div>
+                                <p className="text-xs text-gray-600 mb-1">💎 Raw Price</p>
+                                <p className="text-lg font-bold text-blue-600">
+                                  ${listing.evaluation.marketPriceUngraded.toFixed(2)}
+                                </p>
+                                <p className="text-xs text-gray-500">Ungraded</p>
+                              </div>
+                            )}
 
-                            <div>
-                              <p className="text-xs text-gray-600 mb-1">🎯 Expected Value</p>
-                              <p className="text-lg font-bold text-green-600">
-                                ${listing.evaluation.expectedValue.toFixed(2)}
-                              </p>
-                              <p className="text-xs text-gray-500">
-                                ${((listing.evaluation as any).expectedValueMin || 0).toFixed(0)} - ${((listing.evaluation as any).expectedValueMax || 0).toFixed(0)}
-                              </p>
-                            </div>
+                            {listing.evaluation.expectedValue > 0 && (
+                              <div>
+                                <p className="text-xs text-gray-600 mb-1">🎯 Expected Value</p>
+                                <p className="text-lg font-bold text-green-600">
+                                  ${listing.evaluation.expectedValue.toFixed(2)}
+                                </p>
+                                {(listing.evaluation.expectedValueMin || 0) > 0 && (listing.evaluation.expectedValueMax || 0) > 0 && (
+                                  <p className="text-xs text-gray-500">
+                                    ${(listing.evaluation.expectedValueMin || 0).toFixed(0)} - ${(listing.evaluation.expectedValueMax || 0).toFixed(0)}
+                                  </p>
+                                )}
+                              </div>
+                            )}
 
-                            <div>
-                              <p className="text-xs text-gray-600 mb-1">Deal Margin</p>
-                              <p className={`text-lg font-bold ${
-                                listing.evaluation.dealMargin > 50 ? 'text-green-600' :
-                                listing.evaluation.dealMargin > 0 ? 'text-blue-600' :
-                                'text-red-600'
-                              }`}>
-                                ${listing.evaluation.dealMargin.toFixed(2)}
-                              </p>
-                            </div>
+                            {listing.evaluation.expectedValue > 0 && (
+                              <div>
+                                <p className="text-xs text-gray-600 mb-1">Deal Margin</p>
+                                <p className={`text-lg font-bold ${
+                                  listing.evaluation.dealMargin > 50 ? 'text-green-600' :
+                                  listing.evaluation.dealMargin > 0 ? 'text-blue-600' :
+                                  'text-red-600'
+                                }`}>
+                                  ${listing.evaluation.dealMargin.toFixed(2)}
+                                </p>
+                              </div>
+                            )}
 
                             <div>
                               <p className="text-xs text-gray-600 mb-1">Deal Score</p>
@@ -785,106 +793,191 @@ export default function SearchResults({ searchId }: SearchResultsProps) {
 
                           {listing.evaluation.cardName && (
                             <div className="mt-3 pt-3 border-t border-indigo-200">
-                              <p className="text-sm text-gray-700 mb-2">
-                                <span className="font-medium">Identified as:</span>{' '}
-                                {listing.evaluation.cardName}
-                                {listing.evaluation.cardSet && ` • ${listing.evaluation.cardSet}`}
-                                {listing.evaluation.cardNumber && ` #${listing.evaluation.cardNumber}`}
-                                {listing.evaluation.year && ` (${listing.evaluation.year})`}
-                              </p>
-                              
-                              {/* Card Attributes */}
-                              <div className="flex flex-wrap gap-2 text-xs">
-                                {listing.evaluation.language && listing.evaluation.language !== 'English' && (
-                                  <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                                    🌍 {listing.evaluation.language}
-                                  </span>
-                                )}
-                                {listing.evaluation.isHolo === 1 && (
-                                  <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded">
-                                    ✨ Holo
-                                  </span>
-                                )}
-                                {listing.evaluation.isFirstEdition === 1 && (
-                                  <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
-                                    🥇 1st Edition
-                                  </span>
-                                )}
-                                {listing.evaluation.isShadowless === 1 && (
-                                  <span className="bg-gray-100 text-gray-800 px-2 py-1 rounded">
-                                    👻 Shadowless
-                                  </span>
-                                )}
-                                {listing.evaluation.rarity && (
-                                  <span className="bg-green-100 text-green-800 px-2 py-1 rounded">
-                                    💎 {listing.evaluation.rarity}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Market Pricing Data */}
-                          {(listing.evaluation.marketPriceUngraded || listing.evaluation.marketPricePsa7 || 
-                            listing.evaluation.marketPricePsa8 || listing.evaluation.marketPricePsa9 || 
-                            listing.evaluation.marketPricePsa10) && (
-                            <div className="mt-3 pt-3 border-t border-indigo-200">
-                              <div className="flex items-center justify-between mb-2">
-                                <p className="text-sm font-medium text-gray-700">
-                                  💰 Market Prices {listing.evaluation.pricingSource && (
-                                    <span className="text-xs text-gray-500 font-normal">
-                                      (via {listing.evaluation.pricingSource})
+                              {/* 1. Card Identification Section */}
+                              <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg p-3 mb-3">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1">
+                                    <p className="text-xs text-indigo-600 font-semibold uppercase tracking-wide mb-1">
+                                      Card Identified
+                                    </p>
+                                    <p className="text-sm font-bold text-gray-900">
+                                      {listing.evaluation.cardName}
+                                    </p>
+                                    <p className="text-xs text-gray-600 mt-0.5">
+                                      {listing.evaluation.cardSet && `${listing.evaluation.cardSet} • `}
+                                      {listing.evaluation.cardNumber && `#${listing.evaluation.cardNumber}`}
+                                      {listing.evaluation.year && ` • ${listing.evaluation.year}`}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    {/* Confidence Badge */}
+                                    {listing.evaluation.parseConfidence > 0 && (
+                                      <span className="bg-white px-2 py-1 rounded-md text-[10px] font-semibold text-indigo-700 border border-indigo-200 whitespace-nowrap">
+                                        {(listing.evaluation.parseConfidence * 100).toFixed(0)}% confidence
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                
+                                {/* Card Attributes - Compact Tags */}
+                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                  {listing.evaluation.language && listing.evaluation.language !== 'English' && (
+                                    <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-[10px] font-medium whitespace-nowrap">
+                                      🌍 {listing.evaluation.language}
                                     </span>
                                   )}
-                                </p>
-                                {listing.evaluation.pricingConfidence && (
-                                  <span className="text-xs text-gray-500">
-                                    {(listing.evaluation.pricingConfidence * 100).toFixed(0)}% confidence
-                                  </span>
-                                )}
+                                  {listing.evaluation.isHolo === 1 && (
+                                    <span className="bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-[10px] font-medium whitespace-nowrap">
+                                      ✨ Holo
+                                    </span>
+                                  )}
+                                  {listing.evaluation.isFirstEdition === 1 && (
+                                    <span className="bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded text-[10px] font-medium whitespace-nowrap">
+                                      🥇 1st Edition
+                                    </span>
+                                  )}
+                                  {listing.evaluation.isShadowless === 1 && (
+                                    <span className="bg-gray-100 text-gray-800 px-2 py-0.5 rounded text-[10px] font-medium whitespace-nowrap">
+                                      👻 Shadowless
+                                    </span>
+                                  )}
+                                  {listing.evaluation.rarity && (
+                                    <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded text-[10px] font-medium whitespace-nowrap">
+                                      💎 {listing.evaluation.rarity}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                              <div className="grid grid-cols-5 gap-2 text-xs">
-                                {listing.evaluation.marketPriceUngraded && (
-                                  <div className="bg-white rounded p-2 border border-gray-200">
-                                    <p className="text-gray-600 mb-1">Ungraded</p>
-                                    <p className="font-bold text-gray-900">
-                                      ${listing.evaluation.marketPriceUngraded.toFixed(2)}
-                                    </p>
+
+                              {/* 2. Raw / Ungraded Pricing Section */}
+                              {listing.evaluation.marketPriceUngraded && listing.evaluation.marketPriceUngraded > 0 && (
+                                <div className="mb-3">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide">
+                                      📦 Raw / Ungraded Pricing
+                                    </h4>
+                                    {listing.evaluation.pricingSource && (
+                                      <span className="text-[10px] text-gray-500">
+                                        via {listing.evaluation.pricingSource}
+                                      </span>
+                                    )}
                                   </div>
-                                )}
-                                {listing.evaluation.marketPricePsa7 && (
-                                  <div className="bg-white rounded p-2 border border-yellow-200">
-                                    <p className="text-gray-600 mb-1">PSA 7</p>
-                                    <p className="font-bold text-yellow-700">
-                                      ${listing.evaluation.marketPricePsa7.toFixed(2)}
-                                    </p>
+                                  
+                                  {/* Condition scale - single row */}
+                                  <div className="grid grid-cols-5 gap-2">
+                                    <div className="bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-center">
+                                      <div className="text-[10px] font-bold text-gray-700 mb-1">Near Mint</div>
+                                      <div className="text-sm font-bold text-gray-900">
+                                        ${listing.evaluation.marketPriceUngraded.toFixed(2)}
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-center">
+                                      <div className="text-[10px] font-bold text-gray-700 mb-1">Light Play</div>
+                                      <div className="text-sm font-bold text-gray-900">
+                                        ${(listing.evaluation.marketPriceUngraded * 0.90).toFixed(2)}
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-center">
+                                      <div className="text-[10px] font-bold text-gray-700 mb-1">Mod Play</div>
+                                      <div className="text-sm font-bold text-gray-900">
+                                        ${(listing.evaluation.marketPriceUngraded * 0.65).toFixed(2)}
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-center">
+                                      <div className="text-[10px] font-bold text-gray-700 mb-1">Heavy Play</div>
+                                      <div className="text-sm font-bold text-gray-900">
+                                        ${(listing.evaluation.marketPriceUngraded * 0.55).toFixed(2)}
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-center">
+                                      <div className="text-[10px] font-bold text-gray-700 mb-1">Damaged</div>
+                                      <div className="text-sm font-bold text-gray-900">
+                                        ${(listing.evaluation.marketPriceUngraded * 0.45).toFixed(2)}
+                                      </div>
+                                    </div>
                                   </div>
-                                )}
-                                {listing.evaluation.marketPricePsa8 && (
-                                  <div className="bg-white rounded p-2 border border-blue-200">
-                                    <p className="text-gray-600 mb-1">PSA 8</p>
-                                    <p className="font-bold text-blue-700">
-                                      ${listing.evaluation.marketPricePsa8.toFixed(2)}
-                                    </p>
+                                  
+                                  <p className="text-[10px] text-gray-500 mt-1.5 italic">
+                                    * Estimated prices based on Near Mint market value
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* 3. Graded Pricing Section (PSA) */}
+                              {(listing.evaluation.marketPricePsa7 || listing.evaluation.marketPricePsa8 || 
+                                listing.evaluation.marketPricePsa9 || listing.evaluation.marketPricePsa10) && (
+                                <div>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide">
+                                      🏆 Graded Pricing (PSA)
+                                    </h4>
+                                    {listing.evaluation.pricingConfidence && (
+                                      <span className="text-[10px] text-gray-500">
+                                        {(listing.evaluation.pricingConfidence * 100).toFixed(0)}% confidence
+                                      </span>
+                                    )}
                                   </div>
-                                )}
-                                {listing.evaluation.marketPricePsa9 && (
-                                  <div className="bg-white rounded p-2 border border-green-200">
-                                    <p className="text-gray-600 mb-1">PSA 9</p>
-                                    <p className="font-bold text-green-700">
-                                      ${listing.evaluation.marketPricePsa9.toFixed(2)}
-                                    </p>
+                                  
+                                  {/* PSA Grade Scale */}
+                                  <div className="grid grid-cols-4 gap-2">
+                                    {listing.evaluation.marketPricePsa7 && (
+                                      <div className={`rounded-lg p-2.5 text-center ${
+                                        listing.evaluation.predictedGradeMin && listing.evaluation.predictedGradeMin >= 7 && 
+                                        listing.evaluation.predictedGradeMax && listing.evaluation.predictedGradeMax < 8
+                                          ? 'bg-indigo-100 border-2 border-indigo-500 ring-2 ring-indigo-200'
+                                          : 'bg-gray-50 border border-gray-300'
+                                      }`}>
+                                        <div className="text-[10px] font-bold text-gray-700 mb-1">PSA 7</div>
+                                        <div className="text-sm font-bold text-gray-900">
+                                          ${listing.evaluation.marketPricePsa7.toFixed(2)}
+                                        </div>
+                                      </div>
+                                    )}
+                                    {listing.evaluation.marketPricePsa8 && (
+                                      <div className={`rounded-lg p-2.5 text-center ${
+                                        listing.evaluation.predictedGradeMin && listing.evaluation.predictedGradeMin >= 8 && 
+                                        listing.evaluation.predictedGradeMax && listing.evaluation.predictedGradeMax < 9
+                                          ? 'bg-indigo-100 border-2 border-indigo-500 ring-2 ring-indigo-200'
+                                          : 'bg-gray-50 border border-gray-300'
+                                      }`}>
+                                        <div className="text-[10px] font-bold text-gray-700 mb-1">PSA 8</div>
+                                        <div className="text-sm font-bold text-gray-900">
+                                          ${listing.evaluation.marketPricePsa8.toFixed(2)}
+                                        </div>
+                                      </div>
+                                    )}
+                                    {listing.evaluation.marketPricePsa9 && (
+                                      <div className={`rounded-lg p-2.5 text-center ${
+                                        listing.evaluation.predictedGradeMin && listing.evaluation.predictedGradeMin >= 9 && 
+                                        listing.evaluation.predictedGradeMax && listing.evaluation.predictedGradeMax < 10
+                                          ? 'bg-indigo-100 border-2 border-indigo-500 ring-2 ring-indigo-200'
+                                          : 'bg-gray-50 border border-gray-300'
+                                      }`}>
+                                        <div className="text-[10px] font-bold text-gray-700 mb-1">PSA 9</div>
+                                        <div className="text-sm font-bold text-gray-900">
+                                          ${listing.evaluation.marketPricePsa9.toFixed(2)}
+                                        </div>
+                                      </div>
+                                    )}
+                                    {listing.evaluation.marketPricePsa10 && (
+                                      <div className={`rounded-lg p-2.5 text-center ${
+                                        listing.evaluation.predictedGradeMin && listing.evaluation.predictedGradeMin >= 10
+                                          ? 'bg-indigo-100 border-2 border-indigo-500 ring-2 ring-indigo-200'
+                                          : 'bg-gray-50 border border-gray-300'
+                                      }`}>
+                                        <div className="text-[10px] font-bold text-gray-700 mb-1">PSA 10</div>
+                                        <div className="text-sm font-bold text-gray-900">
+                                          ${listing.evaluation.marketPricePsa10.toFixed(2)}
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
-                                )}
-                                {listing.evaluation.marketPricePsa10 && (
-                                  <div className="bg-white rounded p-2 border border-purple-200">
-                                    <p className="text-gray-600 mb-1">PSA 10</p>
-                                    <p className="font-bold text-purple-700">
-                                      ${listing.evaluation.marketPricePsa10.toFixed(2)}
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
+                                </div>
+                              )}
                             </div>
                           )}
 

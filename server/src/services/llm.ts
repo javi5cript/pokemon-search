@@ -178,6 +178,152 @@ export class LLMService {
   }
 
   /**
+   * Enhanced card identification using both image and text
+   * Combines visual analysis with text parsing for better accuracy
+   */
+  async identifyCardFromImage(
+    images: string[],
+    title: string,
+    description: string = ''
+  ): Promise<{
+    cardName: string;
+    set: string;
+    setCode: string;
+    cardNumber: string;
+    fullCardNumber: string; // e.g., "144/132"
+    variant: string;
+    year: number | string;
+    isHolo: boolean | 'unknown';
+    rarity: string;
+    confidence: number;
+    reasoning: string;
+  }> {
+    if (images.length === 0) {
+      logger.warn('No images provided for card identification, falling back to text-only parsing');
+      const textResult = await this.parseCard(title, description);
+      return {
+        cardName: textResult.cardName,
+        set: textResult.set,
+        setCode: textResult.set,
+        cardNumber: textResult.cardNumber,
+        fullCardNumber: textResult.cardNumber,
+        variant: textResult.variant,
+        year: textResult.year,
+        isHolo: textResult.isHolo,
+        rarity: textResult.rarity,
+        confidence: textResult.confidence,
+        reasoning: textResult.reasoning,
+      };
+    }
+
+    logger.info({ imageCount: images.length, title }, 'Starting enhanced card identification with images');
+
+    const prompt = `You are a Pokémon TCG expert. Analyze the card image(s) and the listing title to accurately identify the card.
+
+LISTING TITLE: ${title}
+DESCRIPTION: ${description || 'N/A'}
+
+TASK: Extract the following information by reading the card image:
+1. **Card Name** - The Pokémon name exactly as shown on the card
+2. **Set Name** - The full set name (e.g., "Plasma Freeze", "Champion's Path", "Mega Evolution")
+3. **Set Code** - The short set code if visible (e.g., "PLF", "CHP")
+4. **Card Number** - The full card number including total (e.g., "144/132", "25/73")
+5. **Variant** - Card type/variant (e.g., "Holo Rare", "Illustration Rare", "Full Art", "Secret Rare")
+6. **Year** - Release year if determinable from set information
+7. **Rarity Symbol** - The rarity symbol visible on the card (circle, diamond, star, etc.)
+
+IMPORTANT INSTRUCTIONS:
+- Read the card DIRECTLY from the image - don't rely solely on the title
+- The set name and card number are typically at the bottom of the card
+- Card number format is usually "XXX/YYY" where XXX is the card number and YYY is the total in set
+- Variant information comes from card appearance (holo pattern, full art, etc.) and set logo
+- If the card number is higher than the total (e.g., 144/132), it's a SECRET RARE
+- Cross-reference the image data with the title to increase confidence
+
+Return ONLY valid JSON:
+{
+  "cardName": "<exact Pokemon name from card>",
+  "set": "<full set name from card bottom>",
+  "setCode": "<short set code or abbreviation>",
+  "cardNumber": "<just the card number, e.g., 144>",
+  "fullCardNumber": "<full format, e.g., 144/132>",
+  "variant": "<Holo Rare, Full Art, Secret Rare, etc>",
+  "year": "<4-digit year or 'unknown'>",
+  "isHolo": <true|false|"unknown">,
+  "rarity": "<Uncommon, Rare, Ultra Rare, etc>",
+  "confidence": <0.0-1.0>,
+  "reasoning": "<explain what you saw in the image>"
+}`;
+
+    try {
+      const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+        { role: 'system', content: 'You are an expert Pokémon TCG card identifier. Extract accurate card information by reading directly from the card images.' },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            ...images.slice(0, 3).map(url => ({ // Use first 3 images
+              type: 'image_url' as const,
+              image_url: { url, detail: 'high' as const },
+            })),
+          ],
+        },
+      ];
+
+      const completion = await this.client.chat.completions.create({
+        model: config.openai.visionModel,
+        messages,
+        max_tokens: 1000,
+        temperature: 0.1,
+        response_format: { type: 'json_object' },
+      });
+
+      const responseText = completion.choices[0].message.content || '{}';
+      const parsed = JSON.parse(responseText);
+
+      logger.info({
+        cardName: parsed.cardName,
+        set: parsed.set,
+        cardNumber: parsed.fullCardNumber,
+        confidence: parsed.confidence
+      }, 'Card identified from images');
+
+      return {
+        cardName: parsed.cardName || 'unknown',
+        set: parsed.set || 'unknown',
+        setCode: parsed.setCode || parsed.set || 'unknown',
+        cardNumber: parsed.cardNumber || 'unknown',
+        fullCardNumber: parsed.fullCardNumber || parsed.cardNumber || 'unknown',
+        variant: parsed.variant || 'unknown',
+        year: parsed.year || 'unknown',
+        isHolo: parsed.isHolo ?? 'unknown',
+        rarity: parsed.rarity || 'unknown',
+        confidence: Math.max(0, Math.min(1, parsed.confidence || 0.5)),
+        reasoning: parsed.reasoning || 'Identified from card image',
+      };
+
+    } catch (error: any) {
+      logger.error({ error: error.message }, 'Image-based card identification failed, falling back to text parsing');
+      
+      // Fallback to text-only parsing
+      const textResult = await this.parseCard(title, description);
+      return {
+        cardName: textResult.cardName,
+        set: textResult.set,
+        setCode: textResult.set,
+        cardNumber: textResult.cardNumber,
+        fullCardNumber: textResult.cardNumber,
+        variant: textResult.variant,
+        year: textResult.year,
+        isHolo: textResult.isHolo,
+        rarity: textResult.rarity,
+        confidence: textResult.confidence * 0.7, // Lower confidence for fallback
+        reasoning: `Fallback to text parsing: ${textResult.reasoning}`,
+      };
+    }
+  }
+
+  /**
    * Parse card information from listing text
    */
   async parseCard(

@@ -35,7 +35,7 @@ const configSchema = z.object({
     apiKey: z.string().min(1),
     baseURL: z.string().optional(),
     organization: z.string().optional(),
-    model: z.string().default('gpt-4-turbo'),
+    model: z.string().default('gpt-5.2'),
     visionModel: z.string().default('gpt-4-vision-preview'),
     rateLimitPerMinute: z.coerce.number().default(60),
   }),
