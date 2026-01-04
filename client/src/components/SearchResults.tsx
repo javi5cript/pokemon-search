@@ -70,16 +70,39 @@ interface Listing {
   endTime: string;
   images: string[];
   evaluation: {
+    // Card metadata
     cardName: string | null;
     cardSet: string | null;
     cardNumber: string | null;
+    year: string | null;
+    language: string | null;
+    isHolo: number | null;
+    isFirstEdition: number | null;
+    isShadowless: number | null;
+    rarity: string | null;
+    parseConfidence: number;
+    
+    // Grading
     predictedGradeMin: number | null;
     predictedGradeMax: number | null;
     gradeConfidence: number;
     gradeReasoning?: string;
     gradingDetails?: GradingDetails;
     defectFlags?: string[];
+    
+    // Pricing from JustTCG
+    marketPriceUngraded: number | null;
+    marketPricePsa7: number | null;
+    marketPricePsa8: number | null;
+    marketPricePsa9: number | null;
+    marketPricePsa10: number | null;
+    pricingConfidence: number | null;
+    pricingSource: string | null;
+    
+    // Scoring
     expectedValue: number;
+    expectedValueMin: number | null;
+    expectedValueMax: number | null;
     dealMargin: number;
     dealScore: number;
     isQualified: boolean;
@@ -762,12 +785,106 @@ export default function SearchResults({ searchId }: SearchResultsProps) {
 
                           {listing.evaluation.cardName && (
                             <div className="mt-3 pt-3 border-t border-indigo-200">
-                              <p className="text-sm text-gray-700">
+                              <p className="text-sm text-gray-700 mb-2">
                                 <span className="font-medium">Identified as:</span>{' '}
                                 {listing.evaluation.cardName}
                                 {listing.evaluation.cardSet && ` • ${listing.evaluation.cardSet}`}
                                 {listing.evaluation.cardNumber && ` #${listing.evaluation.cardNumber}`}
+                                {listing.evaluation.year && ` (${listing.evaluation.year})`}
                               </p>
+                              
+                              {/* Card Attributes */}
+                              <div className="flex flex-wrap gap-2 text-xs">
+                                {listing.evaluation.language && listing.evaluation.language !== 'English' && (
+                                  <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                    🌍 {listing.evaluation.language}
+                                  </span>
+                                )}
+                                {listing.evaluation.isHolo === 1 && (
+                                  <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded">
+                                    ✨ Holo
+                                  </span>
+                                )}
+                                {listing.evaluation.isFirstEdition === 1 && (
+                                  <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
+                                    🥇 1st Edition
+                                  </span>
+                                )}
+                                {listing.evaluation.isShadowless === 1 && (
+                                  <span className="bg-gray-100 text-gray-800 px-2 py-1 rounded">
+                                    👻 Shadowless
+                                  </span>
+                                )}
+                                {listing.evaluation.rarity && (
+                                  <span className="bg-green-100 text-green-800 px-2 py-1 rounded">
+                                    💎 {listing.evaluation.rarity}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Market Pricing Data */}
+                          {(listing.evaluation.marketPriceUngraded || listing.evaluation.marketPricePsa7 || 
+                            listing.evaluation.marketPricePsa8 || listing.evaluation.marketPricePsa9 || 
+                            listing.evaluation.marketPricePsa10) && (
+                            <div className="mt-3 pt-3 border-t border-indigo-200">
+                              <div className="flex items-center justify-between mb-2">
+                                <p className="text-sm font-medium text-gray-700">
+                                  💰 Market Prices {listing.evaluation.pricingSource && (
+                                    <span className="text-xs text-gray-500 font-normal">
+                                      (via {listing.evaluation.pricingSource})
+                                    </span>
+                                  )}
+                                </p>
+                                {listing.evaluation.pricingConfidence && (
+                                  <span className="text-xs text-gray-500">
+                                    {(listing.evaluation.pricingConfidence * 100).toFixed(0)}% confidence
+                                  </span>
+                                )}
+                              </div>
+                              <div className="grid grid-cols-5 gap-2 text-xs">
+                                {listing.evaluation.marketPriceUngraded && (
+                                  <div className="bg-white rounded p-2 border border-gray-200">
+                                    <p className="text-gray-600 mb-1">Ungraded</p>
+                                    <p className="font-bold text-gray-900">
+                                      ${listing.evaluation.marketPriceUngraded.toFixed(2)}
+                                    </p>
+                                  </div>
+                                )}
+                                {listing.evaluation.marketPricePsa7 && (
+                                  <div className="bg-white rounded p-2 border border-yellow-200">
+                                    <p className="text-gray-600 mb-1">PSA 7</p>
+                                    <p className="font-bold text-yellow-700">
+                                      ${listing.evaluation.marketPricePsa7.toFixed(2)}
+                                    </p>
+                                  </div>
+                                )}
+                                {listing.evaluation.marketPricePsa8 && (
+                                  <div className="bg-white rounded p-2 border border-blue-200">
+                                    <p className="text-gray-600 mb-1">PSA 8</p>
+                                    <p className="font-bold text-blue-700">
+                                      ${listing.evaluation.marketPricePsa8.toFixed(2)}
+                                    </p>
+                                  </div>
+                                )}
+                                {listing.evaluation.marketPricePsa9 && (
+                                  <div className="bg-white rounded p-2 border border-green-200">
+                                    <p className="text-gray-600 mb-1">PSA 9</p>
+                                    <p className="font-bold text-green-700">
+                                      ${listing.evaluation.marketPricePsa9.toFixed(2)}
+                                    </p>
+                                  </div>
+                                )}
+                                {listing.evaluation.marketPricePsa10 && (
+                                  <div className="bg-white rounded p-2 border border-purple-200">
+                                    <p className="text-gray-600 mb-1">PSA 10</p>
+                                    <p className="font-bold text-purple-700">
+                                      ${listing.evaluation.marketPricePsa10.toFixed(2)}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           )}
 

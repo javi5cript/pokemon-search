@@ -407,62 +407,73 @@ export class JustTCGService {
   private extractPriceData(card: JustTCGCard): PriceData {
     const variants = card.variants || [];
 
-    // Find Near Mint Normal printing for ungraded price
-    const nmNormal = variants.find(
-      v => v.condition === 'Near Mint' && v.printing === 'Normal'
-    );
-
-    // Map conditions to approximate PSA grades
-    // Note: JustTCG uses conditions, not PSA grades directly
-    // We'll use a rough mapping: Near Mint ≈ PSA 8-9, Lightly Played ≈ PSA 7
-    const gradedPrices: any = {};
-
-    // For PSA 10, look for "Sealed" or highest Near Mint price
-    const sealed = variants.find(v => v.condition === 'Sealed');
-    const nmFoil = variants.find(v => v.condition === 'Near Mint' && v.printing === 'Foil');
-    const nmHolo = variants.find(v => v.condition === 'Near Mint' && v.printing === 'Holo');
+    // Get all Near Mint variants (any printing)
+    const nmVariants = variants.filter(v => v.condition === 'Near Mint');
     
-    // PSA 10 - use sealed or premium Near Mint variants
-    if (sealed) {
-      gradedPrices.psa10 = sealed.price;
-    } else if (nmFoil) {
-      gradedPrices.psa10 = nmFoil.price * 1.5; // Estimate multiplier
-    } else if (nmHolo) {
-      gradedPrices.psa10 = nmHolo.price * 1.4;
-    } else if (nmNormal) {
-      gradedPrices.psa10 = nmNormal.price * 1.3;
+    // Get the best Near Mint variant (prefer standard prints like Unlimited, Holofoil)
+    // Avoid 1st Edition as it's typically much more expensive
+    const nmStandard = nmVariants.find(v => 
+      v.printing === 'Unlimited' || 
+      v.printing === 'Holofoil' ||
+      v.printing === 'Normal' ||
+      v.printing === 'Reverse Holofoil'
+    ) || nmVariants[0]; // Fallback to first Near Mint if no standard found
+
+    // Get Lightly Played variants
+    const lpVariants = variants.filter(v => v.condition === 'Lightly Played');
+    const lpStandard = lpVariants.find(v => 
+      v.printing === 'Unlimited' || 
+      v.printing === 'Holofoil' ||
+      v.printing === 'Normal' ||
+      v.printing === 'Reverse Holofoil'
+    ) || lpVariants[0];
+
+    // Map JustTCG conditions to approximate PSA grades
+    // This is a reasonable approximation based on condition standards:
+    // - Near Mint (no visible flaws) ≈ PSA 8-9
+    // - Lightly Played (minor flaws) ≈ PSA 7
+    // - PSA 10 is estimated at a premium over Near Mint
+    const gradedPrices: {
+      psa7?: number;
+      psa8?: number;
+      psa9?: number;
+      psa10?: number;
+    } = {};
+
+    // PSA 9 - Near Mint is closest to PSA 9
+    if (nmStandard) {
+      gradedPrices.psa9 = nmStandard.price;
     }
 
-    // PSA 9 - Near Mint normal or foil
-    if (nmNormal) {
-      gradedPrices.psa9 = nmNormal.price;
-    } else if (nmFoil) {
-      gradedPrices.psa9 = nmFoil.price * 0.8;
+    // PSA 10 - Premium over Near Mint (typically 30-50% more)
+    if (nmStandard) {
+      gradedPrices.psa10 = nmStandard.price * 1.4;
     }
 
-    // PSA 8 - Near Mint with slight discount or Lightly Played
-    const lp = variants.find(v => v.condition === 'Lightly Played' && v.printing === 'Normal');
-    if (nmNormal) {
-      gradedPrices.psa8 = nmNormal.price * 0.8;
-    } else if (lp) {
-      gradedPrices.psa8 = lp.price * 1.1;
+    // PSA 8 - Between Near Mint and Lightly Played, or 80% of Near Mint
+    if (lpStandard && nmStandard) {
+      // Average of Near Mint and Lightly Played
+      gradedPrices.psa8 = (nmStandard.price + lpStandard.price) / 2;
+    } else if (nmStandard) {
+      gradedPrices.psa8 = nmStandard.price * 0.8;
     }
 
-    // PSA 7 - Lightly Played
-    if (lp) {
-      gradedPrices.psa7 = lp.price;
-    } else if (nmNormal) {
-      gradedPrices.psa7 = nmNormal.price * 0.6;
+    // PSA 7 - Lightly Played is closest to PSA 7
+    if (lpStandard) {
+      gradedPrices.psa7 = lpStandard.price;
+    } else if (nmStandard) {
+      gradedPrices.psa7 = nmStandard.price * 0.65;
     }
 
-    // Market price is Near Mint Normal
-    const marketPrice = nmNormal?.price || null;
+    // Ungraded/loose price is Near Mint standard
+    const loosePrice = nmStandard?.price || null;
+    const marketPrice = nmStandard?.price || null;
 
     return {
       cardId: card.id,
       cardName: card.name,
       setName: card.set_name,
-      loosePrice: nmNormal?.price || null,
+      loosePrice,
       gradedPrices,
       marketPrice,
       lastUpdated: new Date(),

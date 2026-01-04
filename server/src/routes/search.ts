@@ -134,9 +134,19 @@ searchRouter.get('/:searchId', async (req, res) => {
         endTime: listing.endTime,
         images: typeof listing.images === 'string' ? JSON.parse(listing.images) : listing.images,
         evaluation: listing.evaluation ? {
+          // Card metadata
           cardName: listing.evaluation.cardName,
           cardSet: listing.evaluation.cardSet,
           cardNumber: listing.evaluation.cardNumber,
+          year: listing.evaluation.year,
+          language: listing.evaluation.language,
+          isHolo: listing.evaluation.isHolo,
+          isFirstEdition: listing.evaluation.isFirstEdition,
+          isShadowless: listing.evaluation.isShadowless,
+          rarity: listing.evaluation.rarity,
+          parseConfidence: listing.evaluation.parseConfidence,
+          
+          // Grading
           predictedGradeMin: listing.evaluation.predictedGradeMin,
           predictedGradeMax: listing.evaluation.predictedGradeMax,
           gradeConfidence: listing.evaluation.gradeConfidence,
@@ -147,7 +157,20 @@ searchRouter.get('/:searchId', async (req, res) => {
           defectFlags: typeof listing.evaluation.defectFlags === 'string'
             ? JSON.parse(listing.evaluation.defectFlags)
             : (listing.evaluation.defectFlags || []),
+          
+          // Pricing data from JustTCG
+          marketPriceUngraded: listing.evaluation.marketPriceUngraded,
+          marketPricePsa7: listing.evaluation.marketPricePsa7,
+          marketPricePsa8: listing.evaluation.marketPricePsa8,
+          marketPricePsa9: listing.evaluation.marketPricePsa9,
+          marketPricePsa10: listing.evaluation.marketPricePsa10,
+          pricingConfidence: listing.evaluation.pricingConfidence,
+          pricingSource: listing.evaluation.pricingSource,
+          
+          // Deal scoring
           expectedValue: listing.evaluation.expectedValue,
+          expectedValueMin: listing.evaluation.expectedValueMin,
+          expectedValueMax: listing.evaluation.expectedValueMax,
           dealMargin: listing.evaluation.dealMargin,
           dealScore: listing.evaluation.dealScore,
           isQualified: listing.evaluation.isQualified,
