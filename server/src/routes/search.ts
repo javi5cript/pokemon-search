@@ -330,11 +330,24 @@ searchRouter.post('/:searchId/listing/:listingId/grade', async (req, res) => {
         }, 'Fetching pricing data from JustTCG');
         
         try {
-          pricingData = await justTCGService.getPricing(
+          const result = await justTCGService.lookupPrice(
             listing.evaluation.cardName,
             listing.evaluation.cardSet,
-            listing.evaluation.cardNumber || undefined
+            listing.evaluation.cardNumber || '',
+            'English'
           );
+          
+          if (result.found && result.priceData) {
+            pricingData = {
+              ungraded: result.priceData.loosePrice,
+              psa7: result.priceData.gradedPrices.psa7,
+              psa8: result.priceData.gradedPrices.psa8,
+              psa9: result.priceData.gradedPrices.psa9,
+              psa10: result.priceData.gradedPrices.psa10,
+              confidence: result.confidence,
+              source: 'justtcg'
+            };
+          }
           
           if (pricingData) {
             logger.info({ 
