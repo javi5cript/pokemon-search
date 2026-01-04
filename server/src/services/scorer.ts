@@ -461,8 +461,6 @@ export class ListingScorer {
     qualificationFlags: string[];
     softScores: Record<string, number>;
   } {
-    const result = ListingScorer.score(listing, evaluation);
-    
     // Get raw ungraded price from JustTCG
     const rawPrice = evaluation?.marketPriceUngraded || null;
     
@@ -482,7 +480,13 @@ export class ListingScorer {
       expectedValueMin = calculations.expectedValueMin;
       expectedValueMax = calculations.expectedValueMax;
       dealMargin = calculations.dealMargin;
+      
+      // IMPORTANT: Set expectedValue on evaluation object so scoreDealMargin can use it
+      evaluation.expectedValue = expectedValue;
     }
+    
+    // Now calculate deal score with expectedValue available
+    const result = ListingScorer.score(listing, evaluation);
 
     return {
       expectedValue,
